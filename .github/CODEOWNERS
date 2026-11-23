@@ -1,0 +1,6 @@
+# Child data, recording, payment and workflow code needs human review
+/lib/**/auth/** @mykholy
+/lib/**/guardian/** @mykholy
+/lib/**/payments/** @mykholy
+/lib/**/recording/** @mykholy
+/.github/ @mykholy
