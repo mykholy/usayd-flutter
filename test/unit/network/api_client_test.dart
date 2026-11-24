@@ -490,93 +490,99 @@ void main() {
       },
     );
 
-    test('transient network error during refresh does not purge stored tokens', () async {
-      var unauthenticatedFired = false;
-      await tokenStorage.saveTokens(
-        const AuthTokens(
-          accessToken: 'stale-access',
-          expiresIn: 3600,
-          refreshToken: 'valid-refresh',
-        ),
-      );
-
-      final mockClient = MockClient((request) async {
-        if (request.url.path == '/api/v1/auth/refresh') {
-          throw http.ClientException('Network unreachable');
-        }
-        return http.Response(
-          jsonEncode({'title': 'Unauthorized', 'status': 401}),
-          401,
-          headers: {'content-type': 'application/problem+json'},
+    test(
+      'transient network error during refresh does not purge stored tokens',
+      () async {
+        var unauthenticatedFired = false;
+        await tokenStorage.saveTokens(
+          const AuthTokens(
+            accessToken: 'stale-access',
+            expiresIn: 3600,
+            refreshToken: 'valid-refresh',
+          ),
         );
-      });
 
-      final apiClient = ApiClient(
-        baseUrl: 'https://api.usayd.academy',
-        httpClient: mockClient,
-        tokenStorage: tokenStorage,
-        onUnauthenticated: () {
-          unauthenticatedFired = true;
-        },
-      );
-
-      await expectLater(
-        () => apiClient.getProfile(),
-        throwsA(isA<http.ClientException>()),
-      );
-
-      // Tokens MUST NOT be cleared on transient network error
-      expect(await tokenStorage.getTokens(), isNotNull);
-      expect(unauthenticatedFired, isFalse);
-    });
-
-    test('logout racing with in-flight refresh keeps storage cleared', () async {
-      await tokenStorage.saveTokens(
-        const AuthTokens(
-          accessToken: 'stale-access',
-          expiresIn: 3600,
-          refreshToken: 'valid-refresh',
-        ),
-      );
-
-      final mockClient = MockClient((request) async {
-        if (request.url.path == '/api/v1/auth/refresh') {
-          // Delay refresh response
-          await Future<void>.delayed(const Duration(milliseconds: 50));
+        final mockClient = MockClient((request) async {
+          if (request.url.path == '/api/v1/auth/refresh') {
+            throw http.ClientException('Network unreachable');
+          }
           return http.Response(
-            jsonEncode({
-              'data': {
-                'access_token': 'new-access',
-                'expires_in': 3600,
-                'refresh_token': 'new-refresh',
-                'token_type': 'Bearer',
-              },
-            }),
-            200,
-            headers: {'content-type': 'application/json'},
+            jsonEncode({'title': 'Unauthorized', 'status': 401}),
+            401,
+            headers: {'content-type': 'application/problem+json'},
           );
-        }
-        if (request.url.path == '/api/v1/auth/logout') {
-          return http.Response(jsonEncode({'status': 'success'}), 200);
-        }
-        return http.Response('Not Found', 404);
-      });
+        });
 
-      final apiClient = ApiClient(
-        baseUrl: 'https://api.usayd.academy',
-        httpClient: mockClient,
-        tokenStorage: tokenStorage,
-      );
+        final apiClient = ApiClient(
+          baseUrl: 'https://api.usayd.academy',
+          httpClient: mockClient,
+          tokenStorage: tokenStorage,
+          onUnauthenticated: () {
+            unauthenticatedFired = true;
+          },
+        );
 
-      // Start refresh
-      final refreshFuture = apiClient.refresh();
-      // Concurrently log out while refresh is awaiting response
-      await apiClient.logout();
+        await expectLater(
+          () => apiClient.getProfile(),
+          throwsA(isA<http.ClientException>()),
+        );
 
-      await refreshFuture;
+        // Tokens MUST NOT be cleared on transient network error
+        expect(await tokenStorage.getTokens(), isNotNull);
+        expect(unauthenticatedFired, isFalse);
+      },
+    );
 
-      // Storage MUST remain null after logout
-      expect(await tokenStorage.getTokens(), isNull);
-    });
+    test(
+      'logout racing with in-flight refresh keeps storage cleared',
+      () async {
+        await tokenStorage.saveTokens(
+          const AuthTokens(
+            accessToken: 'stale-access',
+            expiresIn: 3600,
+            refreshToken: 'valid-refresh',
+          ),
+        );
+
+        final mockClient = MockClient((request) async {
+          if (request.url.path == '/api/v1/auth/refresh') {
+            // Delay refresh response
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'access_token': 'new-access',
+                  'expires_in': 3600,
+                  'refresh_token': 'new-refresh',
+                  'token_type': 'Bearer',
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/api/v1/auth/logout') {
+            return http.Response(jsonEncode({'status': 'success'}), 200);
+          }
+          return http.Response('Not Found', 404);
+        });
+
+        final apiClient = ApiClient(
+          baseUrl: 'https://api.usayd.academy',
+          httpClient: mockClient,
+          tokenStorage: tokenStorage,
+        );
+
+        // Start refresh
+        final refreshFuture = apiClient.refresh();
+        // Concurrently log out while refresh is awaiting response
+        await apiClient.logout();
+
+        await refreshFuture;
+
+        // Storage MUST remain null after logout
+        expect(await tokenStorage.getTokens(), isNull);
+      },
+    );
   });
 }
