@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:usayd_flutter/core/offline/encryption/encryption_service.dart';
@@ -12,16 +13,38 @@ void main() {
       service = AesGcmEncryptionService(staticKey: staticKey);
     });
 
-    test('encrypts and decrypts string payload accurately', () async {
+    test('encrypts string into versioned v1 envelope format', () async {
       const plaintext = '{"lesson_id":"lsn-42","recitation_score":98.5}';
       final encrypted = await service.encrypt(plaintext);
 
-      expect(encrypted, isNot(equals(plaintext)));
-      expect(encrypted.contains(':'), isTrue);
+      expect(encrypted, startsWith('v1:'));
+      final parts = encrypted.split(':');
+      expect(parts.length, equals(3));
+
+      // Verify IV is 12 bytes (96 bits) per NIST SP 800-38D
+      final ivBytes = base64Decode(parts[1]);
+      expect(ivBytes.length, equals(12));
 
       final decrypted = await service.decrypt(encrypted);
       expect(decrypted, equals(plaintext));
     });
+
+    test(
+      'decrypts legacy unversioned 2-part envelope for backwards compatibility',
+      () async {
+        const plaintext = 'Legacy encrypted draft data';
+        // Create legacy envelope: <iv-base64>:<ciphertext-base64>
+        final iv = enc.IV.fromSecureRandom(16);
+        final encrypter = enc.Encrypter(
+          enc.AES(staticKey, mode: enc.AESMode.gcm),
+        );
+        final encrypted = encrypter.encrypt(plaintext, iv: iv);
+        final legacyEnvelope = '${iv.base64}:${encrypted.base64}';
+
+        final decrypted = await service.decrypt(legacyEnvelope);
+        expect(decrypted, equals(plaintext));
+      },
+    );
 
     test(
       'produces unique ciphertext for same plaintext due to random IV',
@@ -31,7 +54,6 @@ void main() {
         final c2 = await service.encrypt(plaintext);
 
         expect(c1, isNot(equals(c2)));
-
         expect(await service.decrypt(c1), equals(plaintext));
         expect(await service.decrypt(c2), equals(plaintext));
       },
@@ -44,10 +66,10 @@ void main() {
         final encrypted = await service.encrypt(plaintext);
         final parts = encrypted.split(':');
 
-        // Tamper with the ciphertext payload
+        // Tamper with the ciphertext payload in v1 envelope
         final tamperedBody =
-            '${parts[1].substring(0, parts[1].length - 4)}AAAA';
-        final tamperedEnvelope = '${parts[0]}:$tamperedBody';
+            '${parts[2].substring(0, parts[2].length - 4)}AAAA';
+        final tamperedEnvelope = 'v1:${parts[1]}:$tamperedBody';
 
         expect(
           () => service.decrypt(tamperedEnvelope),

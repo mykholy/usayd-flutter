@@ -16,12 +16,13 @@ class OfflineActionQueue {
   }) : _storage = storage,
        _encryption = encryption;
 
-  String _formatKey(String id) => '$_actionPrefix$id';
+  String _formatKey(String userId, String id) =>
+      '$_actionPrefix${userId}_$id';
 
-  /// Enqueue an action. Returns the persisted action.
+  /// Enqueue an action scoped by user. Returns the persisted action.
   /// If an action with the same idempotencyKey already exists, returns the existing action (deduplication).
   Future<OfflineAction> enqueue(OfflineAction action) async {
-    final existingActions = await getAllActions();
+    final existingActions = await getAllActions(userId: action.userId);
     for (final existing in existingActions) {
       if (existing.idempotencyKey == action.idempotencyKey) {
         return existing;
@@ -30,13 +31,13 @@ class OfflineActionQueue {
 
     final jsonString = jsonEncode(action.toJson());
     final encrypted = await _encryption.encrypt(jsonString);
-    await _storage.write(_formatKey(action.id), encrypted);
+    await _storage.write(_formatKey(action.userId, action.id), encrypted);
     return action;
   }
 
   /// Retrieve all pending actions ordered by creation time ascending (FIFO).
-  Future<List<OfflineAction>> getPendingActions() async {
-    final all = await getAllActions();
+  Future<List<OfflineAction>> getPendingActions({String? userId}) async {
+    final all = await getAllActions(userId: userId);
     final pending = all
         .where(
           (a) =>
@@ -47,8 +48,8 @@ class OfflineActionQueue {
     return pending;
   }
 
-  /// Retrieve all stored actions regardless of status.
-  Future<List<OfflineAction>> getAllActions() async {
+  /// Retrieve all stored actions, optionally isolated by userId.
+  Future<List<OfflineAction>> getAllActions({String? userId}) async {
     final allEntries = await _storage.readAll();
     final actions = <OfflineAction>[];
 
@@ -57,7 +58,10 @@ class OfflineActionQueue {
         try {
           final decrypted = await _encryption.decrypt(entry.value);
           final json = jsonDecode(decrypted) as Map<String, dynamic>;
-          actions.add(OfflineAction.fromJson(json));
+          final action = OfflineAction.fromJson(json);
+          if (userId == null || action.userId == userId) {
+            actions.add(action);
+          }
         } catch (_) {
           // If corruption occurs on an item, continue scanning remaining items
         }
@@ -68,46 +72,83 @@ class OfflineActionQueue {
     return actions;
   }
 
-  Future<OfflineAction?> getAction(String id) async {
-    final encrypted = await _storage.read(_formatKey(id));
-    if (encrypted == null) return null;
+  Future<OfflineAction?> getAction(String id, {String? userId}) async {
+    if (userId != null) {
+      final encrypted = await _storage.read(_formatKey(userId, id));
+      if (encrypted != null) {
+        final decrypted = await _encryption.decrypt(encrypted);
+        final json = jsonDecode(decrypted) as Map<String, dynamic>;
+        return OfflineAction.fromJson(json);
+      }
+    }
 
-    final decrypted = await _encryption.decrypt(encrypted);
-    final json = jsonDecode(decrypted) as Map<String, dynamic>;
-    return OfflineAction.fromJson(json);
+    // Fallback: scan all entries for matching action id
+    final allEntries = await _storage.readAll();
+    for (final entry in allEntries.entries) {
+      if (entry.key.startsWith(_actionPrefix) && entry.key.endsWith('_$id')) {
+        try {
+          final decrypted = await _encryption.decrypt(entry.value);
+          final json = jsonDecode(decrypted) as Map<String, dynamic>;
+          final action = OfflineAction.fromJson(json);
+          if (action.id == id) {
+            return action;
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
   }
 
   Future<void> updateAction(OfflineAction action) async {
     final jsonString = jsonEncode(action.toJson());
     final encrypted = await _encryption.encrypt(jsonString);
-    await _storage.write(_formatKey(action.id), encrypted);
+    await _storage.write(_formatKey(action.userId, action.id), encrypted);
   }
 
-  Future<void> removeAction(String id) async {
-    await _storage.delete(_formatKey(id));
-  }
+  Future<void> removeAction(String id, {String? userId}) async {
+    if (userId != null) {
+      await _storage.delete(_formatKey(userId, id));
+      return;
+    }
 
-  Future<void> clearSynced() async {
-    final actions = await getAllActions();
-    for (final action in actions) {
-      if (action.status == SyncStatus.synced) {
-        await removeAction(action.id);
+    final allEntries = await _storage.readAll();
+    for (final entry in allEntries.entries) {
+      if (entry.key.startsWith(_actionPrefix) && entry.key.endsWith('_$id')) {
+        await _storage.delete(entry.key);
       }
     }
   }
 
-  Future<int> getPendingCount() async {
-    final actions = await getAllActions();
-    return actions
-        .where(
-          (a) =>
-              a.status == SyncStatus.pending || a.status == SyncStatus.syncing,
-        )
-        .length;
+  Future<void> clearSynced({String? userId}) async {
+    final actions = await getAllActions(userId: userId);
+    for (final action in actions) {
+      if (action.status == SyncStatus.synced) {
+        await removeAction(action.id, userId: action.userId);
+      }
+    }
   }
 
-  Future<int> getConflictCount() async {
-    final actions = await getAllActions();
+  Future<int> getPendingCount({String? userId}) async {
+    final pending = await getPendingActions(userId: userId);
+    return pending.length;
+  }
+
+  Future<int> getConflictCount({String? userId}) async {
+    final actions = await getAllActions(userId: userId);
     return actions.where((a) => a.status == SyncStatus.conflict).length;
+  }
+
+  /// On startup or recovery, reset any actions stuck in syncing back to pending.
+  Future<int> recoverStuckSyncing({String? userId}) async {
+    final all = await getAllActions(userId: userId);
+    int recovered = 0;
+    for (final action in all) {
+      if (action.status == SyncStatus.syncing) {
+        final updated = action.copyWith(status: SyncStatus.pending);
+        await updateAction(updated);
+        recovered++;
+      }
+    }
+    return recovered;
   }
 }

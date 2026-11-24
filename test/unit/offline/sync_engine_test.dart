@@ -232,5 +232,109 @@ void main() {
 
       engine.dispose();
     });
+
+    test('HTTP 429 Rate Limited handles retry-after gracefully', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'type': 'https://api.usayd.academy/errors/rate-limit',
+            'title': 'Too Many Requests',
+            'status': 429,
+            'detail': 'Rate limit exceeded. Try again in 60 seconds.',
+            'retry_after': 60,
+          }),
+          429,
+          headers: {'content-type': 'application/problem+json'},
+        );
+      });
+
+      final apiClient = ApiClient(
+        baseUrl: 'https://api.usayd.academy',
+        httpClient: mockClient,
+        tokenStorage: tokenStorage,
+      );
+
+      final engine = OfflineSyncEngine(queue: queue, apiClient: apiClient);
+
+      await queue.enqueue(
+        OfflineAction(
+          id: 'act-rate',
+          endpoint: '/api/v1/recitations',
+          method: 'POST',
+          payload: {'surah': 1},
+          idempotencyKey: 'idem-rate',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      final result = await engine.syncAll();
+
+      expect(result.retryCount, equals(1));
+      expect(result.failedCount, equals(0));
+
+      final action = await queue.getAction('act-rate');
+      expect(action!.status, equals(SyncStatus.pending));
+      expect(action.retryCount, equals(1));
+      expect(action.errorMessage, contains('Rate limited'));
+
+      engine.dispose();
+    });
+
+    test('skips actions belonging to different logged-in user', () async {
+      final dispatchedPaths = <String>[];
+      final mockClient = MockClient((request) async {
+        dispatchedPaths.add(request.url.path);
+        return http.Response(
+          '{"status":"ok"}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final apiClient = ApiClient(
+        baseUrl: 'https://api.usayd.academy',
+        httpClient: mockClient,
+        tokenStorage: tokenStorage,
+      );
+
+      final engine = OfflineSyncEngine(queue: queue, apiClient: apiClient);
+
+      await queue.enqueue(
+        OfflineAction(
+          id: 'act-usr1',
+          userId: 'user_111',
+          endpoint: '/api/v1/user1/data',
+          method: 'POST',
+          payload: {},
+          idempotencyKey: 'idem-u1',
+          createdAt: DateTime.now(),
+        ),
+      );
+      await queue.enqueue(
+        OfflineAction(
+          id: 'act-usr2',
+          userId: 'user_222',
+          endpoint: '/api/v1/user2/data',
+          method: 'POST',
+          payload: {},
+          idempotencyKey: 'idem-u2',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      // Sync strictly for user_111
+      final result = await engine.syncAll(currentUserId: 'user_111');
+
+      expect(result.syncedCount, equals(1));
+      expect(dispatchedPaths, equals(['/api/v1/user1/data']));
+
+      final a1 = await queue.getAction('act-usr1', userId: 'user_111');
+      expect(a1!.status, equals(SyncStatus.synced));
+
+      final a2 = await queue.getAction('act-usr2', userId: 'user_222');
+      expect(a2!.status, equals(SyncStatus.pending));
+
+      engine.dispose();
+    });
   });
 }

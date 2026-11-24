@@ -19,6 +19,7 @@ class AesGcmEncryptionService implements EncryptionService {
 
   final FlutterSecureStorage? _secureStorage;
   enc.Key? _cachedKey;
+  Future<enc.Key>? _keyInitFuture;
 
   AesGcmEncryptionService({
     FlutterSecureStorage? secureStorage,
@@ -26,12 +27,27 @@ class AesGcmEncryptionService implements EncryptionService {
   }) : _secureStorage = secureStorage,
        _cachedKey = staticKey;
 
-  Future<enc.Key> _getOrCreateKey() async {
+  /// Concurrency-safe key initialization
+  Future<enc.Key> getOrCreateKey() async {
     final cached = _cachedKey;
     if (cached != null) {
       return cached;
     }
 
+    if (_keyInitFuture != null) {
+      return _keyInitFuture!;
+    }
+
+    _keyInitFuture = _doGetOrCreateKey();
+    try {
+      final key = await _keyInitFuture!;
+      return key;
+    } finally {
+      _keyInitFuture = null;
+    }
+  }
+
+  Future<enc.Key> _doGetOrCreateKey() async {
     final storage = _secureStorage ?? const FlutterSecureStorage();
     final storedBase64 = await storage.read(key: _keyStorageKey);
 
@@ -50,28 +66,39 @@ class AesGcmEncryptionService implements EncryptionService {
 
   @override
   Future<String> encrypt(String plaintext) async {
-    final key = await _getOrCreateKey();
-    // 16-byte random IV/nonce for GCM
-    final iv = enc.IV.fromSecureRandom(16);
+    final key = await getOrCreateKey();
+    // 12-byte (96-bit) random IV/nonce per NIST SP 800-38D standard for AES-GCM
+    final iv = enc.IV.fromSecureRandom(12);
     final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
 
     final encrypted = encrypter.encrypt(plaintext, iv: iv);
 
-    // Envelope format: base64(iv):base64(ciphertext+tag)
-    return '${iv.base64}:${encrypted.base64}';
+    // Standard versioned envelope format: v1:<base64-iv>:<base64-ciphertext+tag>
+    return 'v1:${iv.base64}:${encrypted.base64}';
   }
 
   @override
   Future<String> decrypt(String ciphertextEnvelope) async {
     final parts = ciphertextEnvelope.split(':');
-    if (parts.length != 2) {
+    final String ivBase64;
+    final String cipherBase64;
+
+    if (parts.length == 3 && parts[0] == 'v1') {
+      // Versioned envelope: v1:<iv>:<ciphertext>
+      ivBase64 = parts[1];
+      cipherBase64 = parts[2];
+    } else if (parts.length == 2) {
+      // Backwards-compatible legacy envelope: <iv>:<ciphertext>
+      ivBase64 = parts[0];
+      cipherBase64 = parts[1];
+    } else {
       throw const DecryptionException('Malformed ciphertext envelope format.');
     }
 
     try {
-      final key = await _getOrCreateKey();
-      final iv = enc.IV.fromBase64(parts[0]);
-      final encrypted = enc.Encrypted.fromBase64(parts[1]);
+      final key = await getOrCreateKey();
+      final iv = enc.IV.fromBase64(ivBase64);
+      final encrypted = enc.Encrypted.fromBase64(cipherBase64);
       final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.gcm));
 
       return encrypter.decrypt(encrypted, iv: iv);
