@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/config/flavor_config.dart';
 import '../../../../core/config/interface_mode.dart';
+import '../../../../core/constants/asset_paths.dart';
+import '../../../../core/theme/usayd_colors.dart';
+import '../../../../core/theme/usayd_mode_theme.dart';
+import '../../../../core/theme/usayd_spacing.dart';
+import '../../../../core/theme/usayd_typography.dart';
 
 class HomeScreen extends StatelessWidget {
   final InterfaceMode currentMode;
@@ -14,98 +20,107 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors =
+        theme.extension<UsaydColorScheme>() ?? UsaydColorScheme.light;
+    final modeTheme =
+        theme.extension<UsaydModeTheme>() ??
+        UsaydModeTheme.forMode(currentMode);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'أكاديمية أُسَيْد',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: UsaydTypography.headingM.copyWith(color: colors.txOnBrand),
         ),
         centerTitle: true,
         actions: [
           if (!FlavorConfig.isProd)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: UsaydSpacing.smPlus,
+              ),
               child: Chip(
                 label: Text(
                   FlavorConfig.isDev ? 'DEV' : 'STG',
-                  style: const TextStyle(
-                    fontSize: 11,
+                  style: UsaydTypography.caption.copyWith(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                backgroundColor: FlavorConfig.isDev
-                    ? Colors.orange
-                    : Colors.blue,
+                backgroundColor: FlavorConfig.isDev ? colors.lamp : colors.info,
                 padding: EdgeInsets.zero,
               ),
             ),
         ],
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(UsaydSpacing.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 16),
+              const SizedBox(height: UsaydSpacing.md),
               // Brand mark canopy container
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(UsaydSpacing.lg),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1B3B2B), // Forest Night
-                  borderRadius: BorderRadius.circular(20),
+                  color: colors.bgBrand,
+                  borderRadius: BorderRadius.circular(modeTheme.cardRadius),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    Icon(
-                      Icons.menu_book_rounded,
-                      size: 48,
-                      color: Color(0xFFC49A45), // Lamp Gold
+                    SvgPicture.asset(
+                      UsaydAssets.markReverse,
+                      width: 52,
+                      height: 52,
+                      semanticsLabel: 'شعار أكاديمية أُسَيْد',
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: UsaydSpacing.smPlus),
                     Text(
                       'أكاديمية أُسَيْد',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                      style: UsaydTypography.headingL.copyWith(
+                        color: colors.txOnBrand,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: UsaydSpacing.xs),
                     Text(
                       '«اقرأ بصوتٍ تدنو له الملائكة»',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFFD4AF37),
+                      style: UsaydTypography.bodyM.copyWith(
+                        color: colors.lamp,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              // Mode switcher
+              const SizedBox(height: UsaydSpacing.lg),
+              // Mode switcher card
               Card(
                 elevation: 0,
-                color: const Color(0xFFF0ECE1),
+                color: colors.bgSubtle,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(modeTheme.cardRadius),
+                  side: modeTheme.cardBorderWidth > 0
+                      ? BorderSide(
+                          color: colors.lineStrong,
+                          width: modeTheme.cardBorderWidth,
+                        )
+                      : BorderSide.none,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(UsaydSpacing.md),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'نمط الواجهة التكيفي:',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                        style: UsaydTypography.headingS.copyWith(
+                          color: colors.tx,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: UsaydSpacing.smPlus),
                       SegmentedButton<InterfaceMode>(
                         segments: [
                           ButtonSegment<InterfaceMode>(
@@ -133,25 +148,72 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-              // Active mode details
-              Expanded(
-                child: Center(
-                  child: Text(
-                    'النمط النشط: ${currentMode.displayNameArabic}\n(${currentMode.displayNameEnglish})',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      color: Color(0xFF1B3B2B),
-                      height: 1.6,
-                    ),
+              const SizedBox(height: UsaydSpacing.mdPlus),
+              // Active mode details & illustration spot
+              Card(
+                color: colors.bgRaised,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(modeTheme.cardRadius),
+                  side: BorderSide(
+                    color: modeTheme.cardBorderWidth > 0
+                        ? colors.lineStrong
+                        : colors.line,
+                    width: modeTheme.cardBorderWidth > 0
+                        ? modeTheme.cardBorderWidth
+                        : 1.0,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(UsaydSpacing.md),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildModeIllustration(currentMode),
+                      const SizedBox(height: UsaydSpacing.md),
+                      Text(
+                        'النمط النشط: ${currentMode.displayNameArabic} (${currentMode.displayNameEnglish})',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: modeTheme.bodyTextSize,
+                          fontWeight: FontWeight.bold,
+                          color: colors.txBrand,
+                        ),
+                      ),
+                      const SizedBox(height: UsaydSpacing.xs),
+                      Text(
+                        'الفئة المستهدفة: ${currentMode.recommendedAgeLabel}',
+                        textAlign: TextAlign.center,
+                        style: UsaydTypography.bodyS.copyWith(
+                          color: colors.tx2,
+                        ),
+                      ),
+                      const SizedBox(height: UsaydSpacing.sm),
+                      Text(
+                        'ارتفاع الأزرار: ${modeTheme.buttonHeight.toInt()}px · زاوية البطاقة: ${modeTheme.cardRadius.toInt()}px',
+                        textAlign: TextAlign.center,
+                        style: UsaydTypography.caption.copyWith(
+                          color: colors.tx3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
+              const SizedBox(height: UsaydSpacing.lg),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildModeIllustration(InterfaceMode mode) {
+    final String assetPath = switch (mode) {
+      InterfaceMode.kids => UsaydAssets.kidsBadgeCrown,
+      InterfaceMode.pro => UsaydAssets.spotTajweed,
+      InterfaceMode.simple => UsaydAssets.spotFoundations,
+    };
+
+    return SvgPicture.asset(assetPath, width: 72, height: 72);
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/config/flavor_config.dart';
 import 'core/config/interface_mode.dart';
+import 'core/theme/usayd_theme.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 
 class UsaydApp extends StatefulWidget {
@@ -33,15 +34,9 @@ class _UsaydAppState extends State<UsaydApp> {
     return MaterialApp(
       title: 'أكاديمية أُسَيْد',
       debugShowCheckedModeBanner: FlavorConfig.isDev,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1B3B2B), // Forest Night
-          primary: const Color(0xFF1B3B2B),
-          secondary: const Color(0xFFC49A45), // Lamp Gold
-          surface: const Color(0xFFF9F7F2), // Parchment Surface
-        ),
-      ),
+      theme: UsaydTheme.light(_currentMode),
+      darkTheme: UsaydTheme.dark(_currentMode),
+      themeMode: ThemeMode.light,
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [

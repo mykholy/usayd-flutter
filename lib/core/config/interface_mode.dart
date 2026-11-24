@@ -36,4 +36,15 @@ enum InterfaceMode {
         return 'Simple Mode';
     }
   }
+
+  String get recommendedAgeLabel {
+    switch (this) {
+      case InterfaceMode.kids:
+        return 'الأطفال والناشئة (6–12 سنة)';
+      case InterfaceMode.pro:
+        return 'البالغون والحُفّاظ (13–59 سنة)';
+      case InterfaceMode.simple:
+        return 'كبار السن (60+ سنة)';
+    }
+  }
 }
