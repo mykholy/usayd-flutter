@@ -92,13 +92,17 @@ void main() {
         expect(find.text('«اقرأ بصوتٍ تدنو له الملائكة»'), findsOneWidget);
 
         // Verify theme extension was loaded
-        final BuildContext context = tester.element(find.byType(Scaffold));
+        final BuildContext context = tester.element(
+          find.byType(Scaffold).first,
+        );
         final colors = Theme.of(context).extension<UsaydColorScheme>();
         expect(colors, isNotNull);
         expect(colors?.bgBrand, const Color(0xFF0F2529));
 
         // Toggle to Simple mode
-        await tester.tap(find.text('النمط الميسر (كبار السن)'));
+        final simpleBtn = find.text('النمط الميسر (كبار السن)');
+        await tester.ensureVisible(simpleBtn);
+        await tester.tap(simpleBtn);
         await tester.pumpAndSettle();
 
         expect(

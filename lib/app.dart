@@ -6,7 +6,7 @@ import 'core/config/user_preferences.dart';
 import 'core/localization/app_locale.dart';
 import 'core/localization/usayd_localizations.dart';
 import 'core/theme/usayd_theme.dart';
-import 'features/home/presentation/screens/home_screen.dart';
+import 'features/shell/presentation/adaptive_shell.dart';
 
 class UsaydApp extends StatefulWidget {
   final UserPreferences? initialPreferences;
@@ -69,7 +69,7 @@ class _UsaydAppState extends State<UsaydApp> {
           child: child ?? const SizedBox.shrink(),
         );
       },
-      home: HomeScreen(
+      home: AdaptiveShell(
         preferences: _preferences,
         onLocaleChanged: _onLocaleChanged,
         onThemeModeChanged: _onThemeModeChanged,
