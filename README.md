@@ -53,4 +53,5 @@ flutter test
 
 ## Documentation
 - [Flutter Bootstrap & Flavors Guide](docs/FLUTTER_BOOTSTRAP_AND_FLAVORS.md)
+- [Design Tokens & Asset Architecture](docs/FLUTTER_DESIGN_TOKENS_AND_ASSETS.md)
 - [Architecture & Governance](AGENTS.md)
