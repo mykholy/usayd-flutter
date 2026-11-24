@@ -90,7 +90,11 @@ class AppRouter {
               onThemeModeChanged: (themeMode) => authNotifier.updatePreferences(
                 authNotifier.preferences.copyWith(themeMode: themeMode),
               ),
-              onModeChanged: (mode) => authNotifier.updateMode(mode),
+              onModeChanged: (mode) {
+                authNotifier.updateMode(mode);
+                final target = AppRoute.defaultRouteForMode(mode.name);
+                context.go(target);
+              },
               child: child,
             );
           },
@@ -99,6 +103,7 @@ class AppRouter {
             GoRoute(
               path: AppRoute.proHome,
               builder: (context, state) => HomeScreen(
+                key: const Key('screen_pro_home'),
                 preferences: authNotifier.preferences,
                 onLocaleChanged: (locale) => authNotifier.updatePreferences(
                   authNotifier.preferences.copyWith(locale: locale),
@@ -107,7 +112,11 @@ class AppRouter {
                     authNotifier.updatePreferences(
                       authNotifier.preferences.copyWith(themeMode: themeMode),
                     ),
-                onModeChanged: (mode) => authNotifier.updateMode(mode),
+                onModeChanged: (mode) {
+                  authNotifier.updateMode(mode);
+                  final target = AppRoute.defaultRouteForMode(mode.name);
+                  context.go(target);
+                },
               ),
             ),
             GoRoute(
@@ -146,10 +155,21 @@ class AppRouter {
             // Kids Mode routes
             GoRoute(
               path: AppRoute.kidsMission,
-              builder: (context, state) => const _RoutePlaceholderScreen(
-                key: Key('screen_kids_mission'),
-                title: 'Kids Daily Mission',
-                routeName: AppRoute.kidsMission,
+              builder: (context, state) => HomeScreen(
+                key: const Key('screen_kids_mission'),
+                preferences: authNotifier.preferences,
+                onLocaleChanged: (locale) => authNotifier.updatePreferences(
+                  authNotifier.preferences.copyWith(locale: locale),
+                ),
+                onThemeModeChanged: (themeMode) =>
+                    authNotifier.updatePreferences(
+                      authNotifier.preferences.copyWith(themeMode: themeMode),
+                    ),
+                onModeChanged: (mode) {
+                  authNotifier.updateMode(mode);
+                  final target = AppRoute.defaultRouteForMode(mode.name);
+                  context.go(target);
+                },
               ),
             ),
             GoRoute(
@@ -180,10 +200,21 @@ class AppRouter {
             // Simple Mode routes
             GoRoute(
               path: AppRoute.simpleToday,
-              builder: (context, state) => const _RoutePlaceholderScreen(
-                key: Key('screen_simple_today'),
-                title: 'Simple Today Werd',
-                routeName: AppRoute.simpleToday,
+              builder: (context, state) => HomeScreen(
+                key: const Key('screen_simple_today'),
+                preferences: authNotifier.preferences,
+                onLocaleChanged: (locale) => authNotifier.updatePreferences(
+                  authNotifier.preferences.copyWith(locale: locale),
+                ),
+                onThemeModeChanged: (themeMode) =>
+                    authNotifier.updatePreferences(
+                      authNotifier.preferences.copyWith(themeMode: themeMode),
+                    ),
+                onModeChanged: (mode) {
+                  authNotifier.updateMode(mode);
+                  final target = AppRoute.defaultRouteForMode(mode.name);
+                  context.go(target);
+                },
               ),
             ),
             GoRoute(
@@ -232,6 +263,7 @@ class _RoutePlaceholderScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final segment = routeName.split('/').last.toUpperCase();
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: Center(
@@ -240,6 +272,11 @@ class _RoutePlaceholderScreen extends StatelessWidget {
           children: [
             Text(title, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8.0),
+            Text(
+              '$segment SCREEN',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4.0),
             Text(
               'Route: $routeName',
               style: Theme.of(context).textTheme.bodyMedium,

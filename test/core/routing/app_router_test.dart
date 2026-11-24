@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/config/user_preferences.dart';
 import 'package:usayd_flutter/core/network/models/user_profile.dart';
@@ -133,6 +134,45 @@ void main() {
 
       expect(RouteGuard.evaluate(AppRoute.adminSettings, auth), isNull);
     });
+
+    test('authenticated with null profile fails closed to login', () {
+      final auth = AuthStateNotifier(isAuthenticated: true, user: null);
+      expect(
+        RouteGuard.evaluate(AppRoute.proHome, auth),
+        equals(AppRoute.login),
+      );
+    });
+
+    test('missing role or non-active status fails closed to unauthorized', () {
+      final noRoleUser = _mockUser(role: '');
+      final authNoRole = AuthStateNotifier(
+        isAuthenticated: true,
+        user: noRoleUser,
+      );
+      expect(
+        RouteGuard.evaluate(AppRoute.proHome, authNoRole),
+        equals(AppRoute.unauthorized),
+      );
+
+      final suspendedUser = const UserProfile(
+        id: 1,
+        name: 'Suspended',
+        email: 'suspended@usayd.com',
+        locale: 'ar',
+        country: 'EG',
+        timezone: 'UTC',
+        status: 'suspended',
+        role: 'learner',
+      );
+      final authSuspended = AuthStateNotifier(
+        isAuthenticated: true,
+        user: suspendedUser,
+      );
+      expect(
+        RouteGuard.evaluate(AppRoute.proHome, authSuspended),
+        equals(AppRoute.unauthorized),
+      );
+    });
   });
 
   group('AppRouter Widget & Navigation Tests', () {
@@ -198,6 +238,17 @@ void main() {
       expect(find.byKey(const Key('shell_tab_stars')), findsOneWidget);
       expect(find.byKey(const Key('shell_tab_me')), findsOneWidget);
     });
+
+    testWidgets(
+      'UsaydApp root widget renders via MaterialApp.router and route guard',
+      (tester) async {
+        await tester.pumpWidget(const UsaydApp());
+        await tester.pumpAndSettle();
+
+        expect(find.byType(HomeScreen), findsOneWidget);
+        expect(find.byKey(const Key('shell_tab_lessons')), findsOneWidget);
+      },
+    );
   });
 }
 
