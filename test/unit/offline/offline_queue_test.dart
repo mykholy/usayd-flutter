@@ -153,5 +153,64 @@ void main() {
         expect(remaining.any((a) => a.id == 's1'), isFalse);
       },
     );
+
+    test(
+      'enforces strict account isolation between different userIds',
+      () async {
+        final user1Action = OfflineAction(
+          id: 'u1-act-001',
+          userId: 'usr_111',
+          endpoint: '/api/v1/profile',
+          method: 'PUT',
+          payload: {'name': 'Learner One'},
+          idempotencyKey: 'idem-u1-1',
+          createdAt: DateTime.now(),
+        );
+
+        final user2Action = OfflineAction(
+          id: 'u2-act-001',
+          userId: 'usr_222',
+          endpoint: '/api/v1/profile',
+          method: 'PUT',
+          payload: {'name': 'Learner Two'},
+          idempotencyKey: 'idem-u2-1',
+          createdAt: DateTime.now(),
+        );
+
+        await queue.enqueue(user1Action);
+        await queue.enqueue(user2Action);
+
+        // Verify user 1 partition
+        final user1Actions = await queue.getAllActions(userId: 'usr_111');
+        expect(user1Actions.length, equals(1));
+        expect(user1Actions.first.id, equals('u1-act-001'));
+
+        // Verify user 2 partition
+        final user2Actions = await queue.getAllActions(userId: 'usr_222');
+        expect(user2Actions.length, equals(1));
+        expect(user2Actions.first.id, equals('u2-act-001'));
+      },
+    );
+
+    test('recovers actions stuck in syncing state back to pending', () async {
+      final stuckAction = OfflineAction(
+        id: 'stuck-001',
+        userId: 'usr_111',
+        endpoint: '/api/v1/audio/upload',
+        method: 'POST',
+        payload: {'chunk': 1},
+        status: SyncStatus.syncing,
+        idempotencyKey: 'idem-stuck',
+        createdAt: DateTime.now(),
+      );
+
+      await queue.enqueue(stuckAction);
+
+      final recovered = await queue.recoverStuckSyncing(userId: 'usr_111');
+      expect(recovered, equals(1));
+
+      final action = await queue.getAction('stuck-001', userId: 'usr_111');
+      expect(action!.status, equals(SyncStatus.pending));
+    });
   });
 }

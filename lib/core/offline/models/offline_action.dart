@@ -2,6 +2,7 @@ import 'sync_status.dart';
 
 class OfflineAction {
   final String id;
+  final String userId;
   final String endpoint;
   final String method;
   final Map<String, dynamic> payload;
@@ -16,6 +17,7 @@ class OfflineAction {
 
   const OfflineAction({
     required this.id,
+    this.userId = 'default_user',
     required this.endpoint,
     required this.method,
     required this.payload,
@@ -31,6 +33,7 @@ class OfflineAction {
 
   OfflineAction copyWith({
     String? id,
+    String? userId,
     String? endpoint,
     String? method,
     Map<String, dynamic>? payload,
@@ -45,6 +48,7 @@ class OfflineAction {
   }) {
     return OfflineAction(
       id: id ?? this.id,
+      userId: userId ?? this.userId,
       endpoint: endpoint ?? this.endpoint,
       method: method ?? this.method,
       payload: payload ?? this.payload,
@@ -62,6 +66,7 @@ class OfflineAction {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'user_id': userId,
       'endpoint': endpoint,
       'method': method,
       'payload': payload,
@@ -79,6 +84,7 @@ class OfflineAction {
   factory OfflineAction.fromJson(Map<String, dynamic> json) {
     return OfflineAction(
       id: json['id'] as String,
+      userId: json['user_id'] as String? ?? 'default_user',
       endpoint: json['endpoint'] as String,
       method: json['method'] as String,
       payload: Map<String, dynamic>.from(json['payload'] as Map),

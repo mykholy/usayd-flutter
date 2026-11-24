@@ -53,6 +53,7 @@ class OfflineSyncEngine {
   final int maxRetries;
 
   bool _isSyncing = false;
+  Future<SyncResult>? _activeSyncFuture;
   final StreamController<SyncEvent> _eventController =
       StreamController<SyncEvent>.broadcast();
 
@@ -65,17 +66,24 @@ class OfflineSyncEngine {
   bool get isSyncing => _isSyncing;
   Stream<SyncEvent> get eventStream => _eventController.stream;
 
-  /// Synchronize all pending offline mutations in strict FIFO order.
-  Future<SyncResult> syncAll() async {
-    if (_isSyncing) {
-      return const SyncResult(
-        syncedCount: 0,
-        conflictCount: 0,
-        failedCount: 0,
-        retryCount: 0,
-      );
+  /// Recover any actions stuck in syncing state from previous ungraceful shutdown.
+  Future<int> recoverAbandonedSyncing({String? currentUserId}) async {
+    return queue.recoverStuckSyncing(userId: currentUserId);
+  }
+
+  /// Single-flight sync: returns the active in-flight future if already synchronizing.
+  Future<SyncResult> syncAll({String? currentUserId}) {
+    if (_activeSyncFuture != null) {
+      return _activeSyncFuture!;
     }
 
+    _activeSyncFuture = _executeSync(currentUserId: currentUserId);
+    return _activeSyncFuture!.whenComplete(() {
+      _activeSyncFuture = null;
+    });
+  }
+
+  Future<SyncResult> _executeSync({String? currentUserId}) async {
     _isSyncing = true;
     _eventController.add(SyncEvent(type: SyncEventType.started));
 
@@ -85,9 +93,27 @@ class OfflineSyncEngine {
     int retryCount = 0;
 
     try {
-      final pendingActions = await queue.getPendingActions();
+      // Recover any unclosed syncing actions first
+      await queue.recoverStuckSyncing(userId: currentUserId);
+
+      final pendingActions = await queue.getPendingActions(
+        userId: currentUserId,
+      );
 
       for (final action in pendingActions) {
+        // Guard: account isolation validation
+        if (currentUserId != null && action.userId != currentUserId) {
+          _eventController.add(
+            SyncEvent(
+              type: SyncEventType.actionFailed,
+              action: action,
+              message:
+                  'Skipped action belonging to another user: ${action.userId}',
+            ),
+          );
+          continue;
+        }
+
         // Mark in-flight
         final inFlight = action.copyWith(status: SyncStatus.syncing);
         await queue.updateAction(inFlight);
@@ -121,7 +147,6 @@ class OfflineSyncEngine {
         } on ProblemDetailsException catch (e) {
           if (e.status == 409) {
             // Conflict: state divergence between client draft and server truth
-            // Never fake server commit! Mark as conflict for explicit resolution.
             final conflictAction = inFlight.copyWith(
               status: SyncStatus.conflict,
               errorMessage: e.detail,
@@ -136,8 +161,27 @@ class OfflineSyncEngine {
                 message: e.detail,
               ),
             );
+          } else if (e.status == 429) {
+            // HTTP 429 Rate Limited: handle gracefully with backoff
+            final retryAfterSeconds = _parseRetryAfter(e);
+            final retriedAction = inFlight.copyWith(
+              status: SyncStatus.pending,
+              retryCount: inFlight.retryCount + 1,
+              errorMessage:
+                  'Rate limited (HTTP 429). Retry after ${retryAfterSeconds}s',
+            );
+            await queue.updateAction(retriedAction);
+            retryCount++;
+            _eventController.add(
+              SyncEvent(
+                type: SyncEventType.actionRetried,
+                action: retriedAction,
+                message: 'Rate limited. Retry after ${retryAfterSeconds}s',
+              ),
+            );
+            break; // Pause remaining sync batch
           } else if (e.status >= 400 && e.status < 500) {
-            // Unrecoverable client error (e.g. 422 Unprocessable Entity)
+            // Unrecoverable client error
             final failedAction = inFlight.copyWith(
               status: SyncStatus.failed,
               errorMessage: e.detail,
@@ -169,7 +213,7 @@ class OfflineSyncEngine {
             );
           }
         } on http.ClientException catch (e) {
-          // Network partition / connectivity outage: preserve pending for next sync
+          // Network partition: preserve pending for next sync
           final retriedAction = inFlight.copyWith(
             status: SyncStatus.pending,
             retryCount: inFlight.retryCount + 1,
@@ -185,7 +229,6 @@ class OfflineSyncEngine {
             ),
           );
         } catch (e) {
-          // Generic network or socket failure
           final retriedAction = inFlight.copyWith(
             status: SyncStatus.pending,
             retryCount: inFlight.retryCount + 1,
@@ -213,6 +256,18 @@ class OfflineSyncEngine {
       failedCount: failedCount,
       retryCount: retryCount,
     );
+  }
+
+  int _parseRetryAfter(ProblemDetailsException e) {
+    final val = e.extensions['retry_after'];
+    if (val != null) {
+      if (val is num) return val.toInt();
+      if (val is String) {
+        final parsed = int.tryParse(val);
+        if (parsed != null) return parsed;
+      }
+    }
+    return 30; // Default 30s backoff
   }
 
   void dispose() {
