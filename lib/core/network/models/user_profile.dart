@@ -7,6 +7,8 @@ class UserProfile {
   final String country;
   final String timezone;
   final String status;
+  final String role;
+  final bool isMinor;
 
   const UserProfile({
     required this.id,
@@ -17,6 +19,8 @@ class UserProfile {
     required this.country,
     required this.timezone,
     required this.status,
+    this.role = 'learner',
+    this.isMinor = false,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -29,6 +33,8 @@ class UserProfile {
       country: (json['country'] as String?) ?? 'EG',
       timezone: (json['timezone'] as String?) ?? 'Africa/Cairo',
       status: (json['status'] as String?) ?? 'active',
+      role: (json['role'] as String?) ?? 'learner',
+      isMinor: (json['is_minor'] as bool?) ?? false,
     );
   }
 
@@ -41,5 +47,7 @@ class UserProfile {
     'country': country,
     'timezone': timezone,
     'status': status,
+    'role': role,
+    'is_minor': isMinor,
   };
 }
