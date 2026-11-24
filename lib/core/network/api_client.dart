@@ -232,6 +232,54 @@ class ApiClient {
     });
   }
 
+  /// Perform generic authenticated HTTP request (GET, POST, PUT, PATCH, DELETE)
+  /// with optional custom headers and automatic token refresh on 401.
+  Future<Map<String, dynamic>> request({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+  }) async {
+    return _sendWithAuth((token) {
+      final uri = Uri.parse('$_normalizedBaseUrl$path');
+      final combinedHeaders = _buildHeaders(token: token);
+      if (headers != null) {
+        combinedHeaders.addAll(headers);
+      }
+      final encodedBody = body != null ? jsonEncode(body) : null;
+      switch (method.toUpperCase()) {
+        case 'GET':
+          return _httpClient.get(uri, headers: combinedHeaders);
+        case 'POST':
+          return _httpClient.post(
+            uri,
+            headers: combinedHeaders,
+            body: encodedBody,
+          );
+        case 'PUT':
+          return _httpClient.put(
+            uri,
+            headers: combinedHeaders,
+            body: encodedBody,
+          );
+        case 'PATCH':
+          return _httpClient.patch(
+            uri,
+            headers: combinedHeaders,
+            body: encodedBody,
+          );
+        case 'DELETE':
+          return _httpClient.delete(
+            uri,
+            headers: combinedHeaders,
+            body: encodedBody,
+          );
+        default:
+          throw ArgumentError('Unsupported HTTP method: $method');
+      }
+    });
+  }
+
   /// Internal request execution wrapper providing single-attempt 401 token refresh retry.
   Future<Map<String, dynamic>> _sendWithAuth(
     Future<http.Response> Function(String? token) executeRequest,
