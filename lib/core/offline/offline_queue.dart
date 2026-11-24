@@ -16,8 +16,7 @@ class OfflineActionQueue {
   }) : _storage = storage,
        _encryption = encryption;
 
-  String _formatKey(String userId, String id) =>
-      '$_actionPrefix${userId}_$id';
+  String _formatKey(String userId, String id) => '$_actionPrefix${userId}_$id';
 
   /// Enqueue an action scoped by user. Returns the persisted action.
   /// If an action with the same idempotencyKey already exists, returns the existing action (deduplication).
