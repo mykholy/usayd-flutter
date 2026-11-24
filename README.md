@@ -55,4 +55,5 @@ flutter test
 - [Flutter Bootstrap & Flavors Guide](docs/FLUTTER_BOOTSTRAP_AND_FLAVORS.md)
 - [Design Tokens & Asset Architecture](docs/FLUTTER_DESIGN_TOKENS_AND_ASSETS.md)
 - [RTL/LTR Localization & Theme Architecture](docs/FLUTTER_LOCALIZATION_AND_THEMES.md)
+- [Responsive Mobile Shell & Navigation](docs/FLUTTER_RESPONSIVE_SHELL.md)
 - [Architecture & Governance](AGENTS.md)

@@ -79,16 +79,18 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify light colors attached
-        BuildContext context = tester.element(find.byType(Scaffold));
+        BuildContext context = tester.element(find.byType(Scaffold).first);
         var colors = Theme.of(context).extension<UsaydColorScheme>();
         expect(colors?.bgPage, const Color(0xFFFBF7EE));
 
         // Tap Dark theme segment
-        await tester.tap(find.textContaining('داكن'));
+        final darkSegment = find.textContaining('داكن');
+        await tester.ensureVisible(darkSegment);
+        await tester.tap(darkSegment);
         await tester.pumpAndSettle();
 
         // Verify dark colors attached
-        context = tester.element(find.byType(Scaffold));
+        context = tester.element(find.byType(Scaffold).first);
         colors = Theme.of(context).extension<UsaydColorScheme>();
         expect(colors?.bgPage, const Color(0xFF0A1B1E));
       },

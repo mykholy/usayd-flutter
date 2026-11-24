@@ -24,14 +24,18 @@ void main() {
     expect(find.textContaining('Professional Mode'), findsOneWidget);
 
     // Tap on Kids mode segment
-    await tester.tap(find.text(InterfaceMode.kids.displayNameArabic));
+    final kidsBtn = find.text(InterfaceMode.kids.displayNameArabic);
+    await tester.ensureVisible(kidsBtn);
+    await tester.tap(kidsBtn);
     await tester.pumpAndSettle();
 
     // Verifies Kids mode is active
     expect(find.textContaining('Kids Mode'), findsOneWidget);
 
     // Tap on Simple mode segment
-    await tester.tap(find.text(InterfaceMode.simple.displayNameArabic));
+    final simpleBtn = find.text(InterfaceMode.simple.displayNameArabic);
+    await tester.ensureVisible(simpleBtn);
+    await tester.tap(simpleBtn);
     await tester.pumpAndSettle();
 
     // Verifies Simple mode is active
