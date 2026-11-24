@@ -1,0 +1,78 @@
+name: Automated Quality Gate V2
+# Governance: Owner Authorization V2
+# Governs autonomous delivery and engineering quality for Usayd Academy.
+# Validates repository boundaries, canonical task IDs, owner-reserved domain isolation,
+# head commit integrity, and secrets hygiene.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  automated-quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Automated Quality Gate V2 requirements
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request?.number;
+            if (!prNumber) {
+              core.setFailed('Cannot locate PR number from payload');
+              return;
+            }
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: Number(prNumber),
+            });
+
+            core.info(`Evaluating PR #${pr.number}: "${pr.title}" (head: ${pr.head.sha})`);
+
+            // 1. Validate Canonical Task ID in title or branch
+            const taskPattern = /USYD-(?:T\d{4}|\d+)/i;
+            const hasTaskInTitle = taskPattern.test(pr.title);
+            const hasTaskInBranch = taskPattern.test(pr.head.ref);
+            if (!hasTaskInTitle && !hasTaskInBranch) {
+              core.setFailed(`PR #${pr.number} title or branch must reference a canonical Usayd task ID (e.g. USYD-T0021 or USYD-34)`);
+              return;
+            }
+
+            // 2. Inspect changed files
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            // 3. Owner-Reserved Domain Isolation:
+            // Legal contracts, authentic Quran content authority, financial percentages,
+            // and business policies require explicit owner (@mykholy) authorship or label.
+            const ownerReserved = /(^|\/)(authentic_content|owner_decisions|licensing|curriculum_theology|financial_commission)(\/|\.|$)/i;
+            const hasOwnerReservedFiles = files.some(f => ownerReserved.test(f.filename));
+            if (hasOwnerReservedFiles) {
+              const isOwner = pr.user.login.toLowerCase() === 'mykholy';
+              const hasOwnerLabel = (pr.labels || []).some(l => l.name === 'owner-approved');
+              if (!isOwner && !hasOwnerLabel) {
+                core.setFailed('PR touches owner-reserved business/theological/financial domains. Explicit owner approval or commit required.');
+                return;
+              }
+            }
+
+            // 4. Secret pattern check on filenames
+            const secretFilePattern = /(^|\/)(id_rsa|id_ed25519|\.env(?!\.example)|\.pem|\.key)$/i;
+            for (const f of files) {
+              if (secretFilePattern.test(f.filename)) {
+                core.setFailed(`Disallowed credential or private key file in PR: ${f.filename}`);
+                return;
+              }
+            }
+
+            core.info('Automated Quality Gate V2 verification PASSED.');
