@@ -24,6 +24,28 @@ class FlavorConfig {
     required String appIdentifier,
     bool enableLogging = false,
   }) {
+    if (flavor == AppFlavor.prod) {
+      final uri = Uri.tryParse(apiBaseUrl);
+      if (uri == null || uri.scheme != 'https') {
+        throw ArgumentError(
+          'Production flavor requires secure HTTPS apiBaseUrl, got: $apiBaseUrl',
+        );
+      }
+      final host = uri.host.toLowerCase();
+      if (host.isEmpty ||
+          host == 'localhost' ||
+          host == '127.0.0.1' ||
+          host == '10.0.2.2' ||
+          host.contains('staging') ||
+          host.contains('dev') ||
+          host.contains('local') ||
+          host.contains('test')) {
+        throw ArgumentError(
+          'Production flavor cannot point to local, staging, or test endpoint: $apiBaseUrl',
+        );
+      }
+    }
+
     _instance = FlavorConfig._(
       flavor: flavor,
       name: name,

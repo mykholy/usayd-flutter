@@ -69,5 +69,49 @@ void main() {
         equals('https://api.usayd.academy/api/v1'),
       );
     });
+
+    test('Prod flavor rejects insecure HTTP URL', () {
+      expect(
+        () => FlavorConfig.init(
+          flavor: AppFlavor.prod,
+          name: 'أكاديمية أُسَيْد',
+          apiBaseUrl: 'http://api.usayd.academy/api/v1',
+          appIdentifier: 'academy.usayd.learner',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('Prod flavor rejects localhost, staging, or test endpoints', () {
+      expect(
+        () => FlavorConfig.init(
+          flavor: AppFlavor.prod,
+          name: 'أكاديمية أُسَيْد',
+          apiBaseUrl: 'https://staging-api.usayd.academy/api/v1',
+          appIdentifier: 'academy.usayd.learner',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => FlavorConfig.init(
+          flavor: AppFlavor.prod,
+          name: 'أكاديمية أُسَيْد',
+          apiBaseUrl: 'https://localhost:8000/api/v1',
+          appIdentifier: 'academy.usayd.learner',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+
+      expect(
+        () => FlavorConfig.init(
+          flavor: AppFlavor.prod,
+          name: 'أكاديمية أُسَيْد',
+          apiBaseUrl: 'https://10.0.2.2:8000/api/v1',
+          appIdentifier: 'academy.usayd.learner',
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
   });
 }
