@@ -1,0 +1,7 @@
+{
+  "status": "PASS",
+  "findings": [],
+  "error": "Clean",
+  "changed_files": [],
+  "governance_note": "Review output is advisory code quality evidence. Only a strict PASS status is accepted by the automated quality gate. Unavailable, inconclusive, or blocked reviews fail closed (exit code 1)."
+}
