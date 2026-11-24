@@ -15,7 +15,7 @@ class ApiClient {
   final LocaleProvider? localeProvider;
   final UnauthenticatedCallback? onUnauthenticated;
 
-  bool _isRefreshing = false;
+  Future<AuthTokens>? _refreshFuture;
 
   ApiClient({
     required this.baseUrl,
@@ -98,7 +98,23 @@ class ApiClient {
   }
 
   /// Rotate refresh token and persist new token pair.
+  /// Deduplicates concurrent callers to a single in-flight Future.
   Future<AuthTokens> refresh({String deviceName = 'flutter-mobile'}) async {
+    final existingFuture = _refreshFuture;
+    if (existingFuture != null) {
+      return existingFuture;
+    }
+
+    final future = _performRefresh(deviceName: deviceName);
+    _refreshFuture = future;
+    try {
+      return await future;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  Future<AuthTokens> _performRefresh({required String deviceName}) async {
     final currentTokens = await tokenStorage.getTokens();
     if (currentTokens == null || currentTokens.refreshToken.isEmpty) {
       await tokenStorage.clearTokens();
@@ -112,28 +128,42 @@ class ApiClient {
     }
 
     final uri = Uri.parse('$_normalizedBaseUrl/api/v1/auth/refresh');
-    final response = await _httpClient.post(
-      uri,
-      headers: _buildHeaders(),
-      body: jsonEncode({
-        'refresh_token': currentTokens.refreshToken,
-        'device_name': deviceName,
-      }),
-    );
+    final http.Response response;
+    try {
+      response = await _httpClient.post(
+        uri,
+        headers: _buildHeaders(),
+        body: jsonEncode({
+          'refresh_token': currentTokens.refreshToken,
+          'device_name': deviceName,
+        }),
+      );
+    } catch (_) {
+      // Network or socket failure: transient error, do NOT wipe tokens
+      rethrow;
+    }
 
     if (response.statusCode == 401 || response.statusCode == 403) {
+      // Explicit authentication rejection: refresh token is expired, revoked, or invalid
       await tokenStorage.clearTokens();
       onUnauthenticated?.call();
     }
 
     final json = _handleResponse(response);
     final newTokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
-    await tokenStorage.saveTokens(newTokens);
+
+    // Guard against logout race: if storage was cleared while request was in flight, do not overwrite
+    final checkTokens = await tokenStorage.getTokens();
+    if (checkTokens != null) {
+      await tokenStorage.saveTokens(newTokens);
+    }
+
     return newTokens;
   }
 
   /// Log out and revoke active tokens.
   Future<void> logout({bool allDevices = false}) async {
+    _refreshFuture = null;
     final tokens = await tokenStorage.getTokens();
     if (tokens != null) {
       try {
@@ -206,21 +236,31 @@ class ApiClient {
   Future<Map<String, dynamic>> _sendWithAuth(
     Future<http.Response> Function(String? token) executeRequest,
   ) async {
-    final tokens = await tokenStorage.getTokens();
-    var response = await executeRequest(tokens?.accessToken);
+    final initialTokens = await tokenStorage.getTokens();
+    final usedToken = initialTokens?.accessToken;
+    var response = await executeRequest(usedToken);
 
-    // If 401 encountered and we have a refresh token and not currently refreshing:
-    if (response.statusCode == 401 && tokens != null && !_isRefreshing) {
-      _isRefreshing = true;
+    // If 401 encountered and we have a valid initial token:
+    if (response.statusCode == 401 && initialTokens != null) {
+      // 1. Detect if another concurrent request already rotated the token in storage:
+      final currentTokens = await tokenStorage.getTokens();
+      if (currentTokens != null && currentTokens.accessToken != usedToken) {
+        // Token was already rotated while this request was in-flight!
+        // Retry immediately using the newly rotated access token without re-refreshing.
+        response = await executeRequest(currentTokens.accessToken);
+        return _handleResponse(response);
+      }
+
+      // 2. Share a single in-flight refresh Future across all concurrent callers:
       try {
         final newTokens = await refresh();
-        _isRefreshing = false;
         // Retry the original request with the freshly minted access token
         response = await executeRequest(newTokens.accessToken);
-      } catch (e) {
-        _isRefreshing = false;
-        await tokenStorage.clearTokens();
-        onUnauthenticated?.call();
+      } on ProblemDetailsException {
+        // Explicit 401/403 failure handled inside _performRefresh()
+        rethrow;
+      } catch (_) {
+        // Transient network error during refresh: do NOT clear valid tokens
         rethrow;
       }
     }

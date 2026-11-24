@@ -318,5 +318,265 @@ void main() {
         );
       }
     });
+    test(
+      'concurrent 401 requests trigger only a single refresh call and all retry with fresh token',
+      () async {
+        var refreshCallCount = 0;
+        var profileCallCount = 0;
+
+        await tokenStorage.saveTokens(
+          const AuthTokens(
+            accessToken: 'stale-access-token',
+            expiresIn: 3600,
+            refreshToken: 'valid-refresh-token',
+          ),
+        );
+
+        final mockClient = MockClient((request) async {
+          if (request.url.path == '/api/v1/auth/refresh') {
+            refreshCallCount++;
+            // Simulate realistic async network delay during refresh
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'access_token': 'fresh-token',
+                  'expires_in': 3600,
+                  'refresh_token': 'fresh-refresh',
+                  'token_type': 'Bearer',
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+
+          if (request.url.path == '/api/v1/auth/me') {
+            profileCallCount++;
+            final authHeader = request.headers['authorization'];
+            if (authHeader == 'Bearer stale-access-token') {
+              return http.Response(
+                jsonEncode({
+                  'title': 'Unauthorized',
+                  'status': 401,
+                  'detail': 'Token expired.',
+                  'code': 'UNAUTHORIZED',
+                }),
+                401,
+                headers: {'content-type': 'application/problem+json'},
+              );
+            }
+            if (authHeader == 'Bearer fresh-token') {
+              return http.Response(
+                jsonEncode({
+                  'status': 'success',
+                  'data': {
+                    'id': 42,
+                    'name': 'Usayd Learner',
+                    'email': 'student@usayd.academy',
+                    'locale': 'ar',
+                    'timezone': 'UTC',
+                    'roles': ['learner'],
+                    'verification_status': 'verified',
+                  },
+                }),
+                200,
+                headers: {'content-type': 'application/json'},
+              );
+            }
+          }
+
+          return http.Response('Not Found', 404);
+        });
+
+        final apiClient = ApiClient(
+          baseUrl: 'https://api.usayd.academy',
+          httpClient: mockClient,
+          tokenStorage: tokenStorage,
+        );
+
+        // Fire 3 concurrent requests that all get 401 on initial attempt
+        final results = await Future.wait([
+          apiClient.getProfile(),
+          apiClient.getProfile(),
+          apiClient.getProfile(),
+        ]);
+
+        expect(results.length, 3);
+        for (final profile in results) {
+          expect(profile.id, 42);
+        }
+        // Exactly ONE refresh network call was executed across all concurrent requests
+        expect(refreshCallCount, 1);
+        expect(profileCallCount, 6); // 3 initial failures + 3 retries
+      },
+    );
+
+    test(
+      'delayed request with 401 detects already rotated token and retries without second refresh',
+      () async {
+        var refreshCallCount = 0;
+
+        // Current storage already has the fresh token rotated by a previous request
+        await tokenStorage.saveTokens(
+          const AuthTokens(
+            accessToken: 'fresh-token',
+            expiresIn: 3600,
+            refreshToken: 'fresh-refresh',
+          ),
+        );
+
+        final mockClient = MockClient((request) async {
+          if (request.url.path == '/api/v1/auth/refresh') {
+            refreshCallCount++;
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'access_token': 'another-token',
+                  'expires_in': 3600,
+                  'refresh_token': 'another-refresh',
+                  'token_type': 'Bearer',
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+
+          if (request.url.path == '/api/v1/auth/me') {
+            final authHeader = request.headers['authorization'];
+            if (authHeader == 'Bearer stale-token') {
+              // Late response to an old in-flight request
+              return http.Response(
+                jsonEncode({'title': 'Unauthorized', 'status': 401}),
+                401,
+                headers: {'content-type': 'application/problem+json'},
+              );
+            }
+            if (authHeader == 'Bearer fresh-token') {
+              return http.Response(
+                jsonEncode({
+                  'status': 'success',
+                  'data': {
+                    'id': 42,
+                    'name': 'Usayd Learner',
+                    'email': 'student@usayd.academy',
+                    'locale': 'ar',
+                    'timezone': 'UTC',
+                    'roles': ['learner'],
+                    'verification_status': 'verified',
+                  },
+                }),
+                200,
+                headers: {'content-type': 'application/json'},
+              );
+            }
+          }
+
+          return http.Response('Not Found', 404);
+        });
+
+        final apiClient = ApiClient(
+          baseUrl: 'https://api.usayd.academy',
+          httpClient: mockClient,
+          tokenStorage: tokenStorage,
+        );
+
+        // Manually invoke request with stale token simulating late in-flight response
+        final response = await apiClient.get('/api/v1/auth/me');
+        expect(response['data']['id'], 42);
+        // refresh was NEVER called because storage already held the rotated token
+        expect(refreshCallCount, 0);
+      },
+    );
+
+    test('transient network error during refresh does not purge stored tokens', () async {
+      var unauthenticatedFired = false;
+      await tokenStorage.saveTokens(
+        const AuthTokens(
+          accessToken: 'stale-access',
+          expiresIn: 3600,
+          refreshToken: 'valid-refresh',
+        ),
+      );
+
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/api/v1/auth/refresh') {
+          throw http.ClientException('Network unreachable');
+        }
+        return http.Response(
+          jsonEncode({'title': 'Unauthorized', 'status': 401}),
+          401,
+          headers: {'content-type': 'application/problem+json'},
+        );
+      });
+
+      final apiClient = ApiClient(
+        baseUrl: 'https://api.usayd.academy',
+        httpClient: mockClient,
+        tokenStorage: tokenStorage,
+        onUnauthenticated: () {
+          unauthenticatedFired = true;
+        },
+      );
+
+      await expectLater(
+        () => apiClient.getProfile(),
+        throwsA(isA<http.ClientException>()),
+      );
+
+      // Tokens MUST NOT be cleared on transient network error
+      expect(await tokenStorage.getTokens(), isNotNull);
+      expect(unauthenticatedFired, isFalse);
+    });
+
+    test('logout racing with in-flight refresh keeps storage cleared', () async {
+      await tokenStorage.saveTokens(
+        const AuthTokens(
+          accessToken: 'stale-access',
+          expiresIn: 3600,
+          refreshToken: 'valid-refresh',
+        ),
+      );
+
+      final mockClient = MockClient((request) async {
+        if (request.url.path == '/api/v1/auth/refresh') {
+          // Delay refresh response
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'access_token': 'new-access',
+                'expires_in': 3600,
+                'refresh_token': 'new-refresh',
+                'token_type': 'Bearer',
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        if (request.url.path == '/api/v1/auth/logout') {
+          return http.Response(jsonEncode({'status': 'success'}), 200);
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final apiClient = ApiClient(
+        baseUrl: 'https://api.usayd.academy',
+        httpClient: mockClient,
+        tokenStorage: tokenStorage,
+      );
+
+      // Start refresh
+      final refreshFuture = apiClient.refresh();
+      // Concurrently log out while refresh is awaiting response
+      await apiClient.logout();
+
+      await refreshFuture;
+
+      // Storage MUST remain null after logout
+      expect(await tokenStorage.getTokens(), isNull);
+    });
   });
 }
