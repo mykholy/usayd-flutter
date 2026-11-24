@@ -40,6 +40,24 @@ class ProblemDetailsException implements Exception {
       });
     }
 
+    final standardKeys = {
+      'type',
+      'title',
+      'status',
+      'detail',
+      'instance',
+      'code',
+      'traceId',
+      'invalidParams',
+      'errors',
+    };
+    final extensions = <String, dynamic>{};
+    json.forEach((k, v) {
+      if (!standardKeys.contains(k)) {
+        extensions[k] = v;
+      }
+    });
+
     return ProblemDetailsException(
       type: json['type'] as String?,
       title: (json['title'] as String?) ?? 'Error',
@@ -49,6 +67,7 @@ class ProblemDetailsException implements Exception {
       code: (json['code'] as String?) ?? 'UNKNOWN_ERROR',
       traceId: json['traceId'] as String?,
       invalidParams: invalidParams,
+      extensions: extensions,
     );
   }
 
