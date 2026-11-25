@@ -30,7 +30,7 @@ void main() {
         if (!path.startsWith('lib/features/')) continue;
         final parts = path.split('/');
         if (parts.length < 5) continue;
-        final feature = 'lib/features/' + parts[2] + '/';
+        final feature = 'lib/features/${parts[2]}/';
         final layer = parts[3];
 
         // Existing IconData-based navigation metadata; migrate separately.
@@ -49,10 +49,10 @@ void main() {
             }
           } else {
             final allowed =
-                target.startsWith(feature + 'domain/') ||
+                target.startsWith('${feature}domain/') ||
                 target.startsWith('lib/core/result/') ||
                 (layer == 'application' &&
-                    target.startsWith(feature + 'application/'));
+                    target.startsWith('${feature}application/'));
             if (!allowed) {
               violations.add('$path imports outer layer $dependency');
             }
@@ -76,7 +76,7 @@ void main() {
 
 String? _localPath(File source, String dependency) {
   if (dependency.startsWith(_packagePrefix)) {
-    return 'lib/' + dependency.substring(_packagePrefix.length);
+    return 'lib/${dependency.substring(_packagePrefix.length)}';
   }
   if (dependency.contains(':')) return null;
   final root = Directory.current.absolute.path.replaceAll('\\', '/');
