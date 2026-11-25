@@ -5,7 +5,6 @@ import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/config/user_preferences.dart';
 import 'package:usayd_flutter/core/localization/app_locale.dart';
 import 'package:usayd_flutter/core/theme/usayd_colors.dart';
-
 import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
@@ -25,7 +24,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         authenticatedAppFixture(
-          initialPreferences: UserPreferences(locale: AppLocale.ar),
+          initialPreferences: const UserPreferences(locale: AppLocale.ar),
         ),
       );
       await tester.pumpAndSettle();
@@ -45,7 +44,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(locale: AppLocale.ar),
+            initialPreferences: const UserPreferences(locale: AppLocale.ar),
           ),
         );
         await tester.pumpAndSettle();
@@ -71,7 +70,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(
+            initialPreferences: const UserPreferences(
               themeMode: ThemeMode.light,
               interfaceMode: InterfaceMode.pro,
             ),
@@ -107,7 +106,11 @@ void main() {
           timezone: 'Asia/Riyadh',
         );
 
-        await tester.pumpWidget(authenticatedAppFixture(initialPreferences: prefs));
+        await tester.pumpWidget(
+
+          authenticatedAppFixture(initialPreferences: prefs),
+
+        );
         await tester.pumpAndSettle();
 
         expect(find.text('SA'), findsOneWidget);

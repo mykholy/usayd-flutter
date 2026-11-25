@@ -4,7 +4,6 @@ import 'package:usayd_flutter/core/config/flavor_config.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/config/user_preferences.dart';
 import 'package:usayd_flutter/core/localization/app_locale.dart';
-
 import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
@@ -24,7 +23,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         authenticatedAppFixture(
-          initialPreferences: UserPreferences(
+          initialPreferences: const UserPreferences(
             interfaceMode: InterfaceMode.pro,
             locale: AppLocale.ar,
           ),
@@ -46,7 +45,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.kids,
               locale: AppLocale.ar,
             ),
@@ -68,7 +67,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.simple,
               locale: AppLocale.ar,
             ),
@@ -89,7 +88,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.pro,
               locale: AppLocale.ar,
             ),
@@ -118,7 +117,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.pro,
               locale: AppLocale.ar,
             ),
@@ -152,7 +151,7 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           authenticatedAppFixture(
-            initialPreferences: UserPreferences(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.pro,
             ),
           ),

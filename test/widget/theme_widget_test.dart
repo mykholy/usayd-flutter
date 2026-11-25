@@ -5,7 +5,6 @@ import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/theme/usayd_colors.dart';
 import 'package:usayd_flutter/core/theme/usayd_mode_theme.dart';
 import 'package:usayd_flutter/core/theme/usayd_theme.dart';
-
 import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
@@ -82,7 +81,9 @@ void main() {
     testWidgets(
       'UsaydApp renders with complete theme extensions and mode toggle',
       (tester) async {
-        await tester.pumpWidget(authenticatedAppFixture(initialMode: InterfaceMode.pro));
+        await tester.pumpWidget(
+          authenticatedAppFixture(initialMode: InterfaceMode.pro),
+        );
         await tester.pumpAndSettle();
 
         // Check brand name and sacred tagline

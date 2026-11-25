@@ -31,6 +31,8 @@ class UsaydApp extends StatefulWidget {
 class _UsaydAppState extends State<UsaydApp> {
   late final AuthStateNotifier _authNotifier;
   late final GoRouter _router;
+  late final bool _ownsAuthNotifier;
+  late final bool _ownsRouter;
 
   @override
   void initState() {
@@ -39,6 +41,8 @@ class _UsaydAppState extends State<UsaydApp> {
         widget.initialPreferences ??
         UserPreferences(interfaceMode: widget.initialMode ?? InterfaceMode.pro);
 
+    _ownsAuthNotifier = widget.authNotifier == null;
+    _ownsRouter = widget.router == null;
     _authNotifier =
         widget.authNotifier ?? AuthStateNotifier(preferences: prefs);
 
@@ -54,8 +58,8 @@ class _UsaydAppState extends State<UsaydApp> {
 
   @override
   void dispose() {
-    if (widget.router == null) _router.dispose();
-    if (widget.authNotifier == null) _authNotifier.dispose();
+    if (_ownsRouter) _router.dispose();
+    if (_ownsAuthNotifier) _authNotifier.dispose();
     super.dispose();
   }
 

@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/flavor_config.dart';
-
 import '../helpers/authenticated_app_fixture.dart';
 
 void main() {

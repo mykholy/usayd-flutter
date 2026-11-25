@@ -8,7 +8,6 @@ import 'package:usayd_flutter/core/routing/app_router.dart';
 import 'package:usayd_flutter/core/routing/auth_state_notifier.dart';
 import 'package:usayd_flutter/core/routing/route_guard.dart';
 import 'package:usayd_flutter/features/home/presentation/screens/home_screen.dart';
-
 import '../../helpers/authenticated_app_fixture.dart';
 
 void main() {
