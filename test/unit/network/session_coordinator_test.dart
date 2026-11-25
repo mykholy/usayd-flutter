@@ -115,4 +115,65 @@ void main() {
     await pending;
     expect(await storage.getTokens(), isNull);
   });
+  test('overlapping logout revokes old credentials before login', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final paths = <String>[];
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        paths.add(request.url.path);
+        if (request.url.path.endsWith('/logout')) {
+          expect(request.headers['authorization'], 'Bearer old-access');
+          return http.Response('{}', 200);
+        }
+        return _tokens(_new);
+      }),
+    );
+    final logout = api.logout(allDevices: true);
+    final login = api.login(email: 'new@example.invalid', password: 'fixture');
+    await logout;
+    await login;
+    expect(paths, ['/api/v1/auth/logout', '/api/v1/auth/login']);
+    expect(await storage.getTokens(), _new);
+  });
+
+  test('failed credential deletion leaves session blocked', () async {
+    final storage = _FailingClearStorage();
+    await storage.saveTokens(_old);
+    final session = SessionCoordinator(storage);
+    final generation = session.beginTransition();
+    await expectLater(session.takeAndClear(generation), throwsStateError);
+    session.finishTransition(generation);
+    expect(() => session.current, throwsA(isA<SessionChangedException>()));
+    storage.fail = false;
+    final retry = session.beginTransition();
+    await session.takeAndClear(retry);
+    session.finishTransition(retry);
+    expect(await session.read(session.current), isNull);
+  });
+
+  test('refresh during transition returns a rejected future', () async {
+    final storage = InMemoryAuthTokenStorage();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async => _tokens(_new)),
+    );
+    final login = api.login(email: 'new@example.invalid', password: 'fixture');
+    final refresh = api.refresh();
+    await expectLater(refresh, throwsA(isA<SessionChangedException>()));
+    await login;
+  });
+}
+
+class _FailingClearStorage extends InMemoryAuthTokenStorage {
+  bool fail = true;
+
+  @override
+  Future<void> clearTokens() async {
+    if (fail) throw StateError('Fixture storage failure');
+    await super.clearTokens();
+  }
 }

@@ -2,9 +2,16 @@ import 'models/auth_tokens.dart';
 import 'token_storage.dart';
 
 class SessionChangedException implements Exception {
-  const SessionChangedException({this.requestMayHaveSucceeded = false});
+  const SessionChangedException({
+    this.requestMayHaveSucceeded = false,
+    this.conflictDetails,
+  });
 
   final bool requestMayHaveSucceeded;
+  final Map<String, dynamic>? conflictDetails;
+
+  bool get requiresReconciliation =>
+      requestMayHaveSucceeded || conflictDetails != null;
 
   @override
   String toString() => 'Authentication session changed.';
@@ -17,6 +24,7 @@ class SessionCoordinator {
   final AuthTokenStorage _storage;
   int _generation = 0;
   bool _transitioning = false;
+  int? _safeGeneration;
   Future<void> _tail = Future<void>.value();
 
   int get current {
@@ -26,11 +34,14 @@ class SessionCoordinator {
 
   int beginTransition() {
     _transitioning = true;
+    _safeGeneration = null;
     return ++_generation;
   }
 
   void finishTransition(int generation) {
-    if (generation == _generation) _transitioning = false;
+    if (generation == _generation && _safeGeneration == generation) {
+      _transitioning = false;
+    }
   }
 
   void ensureCurrent(int generation, {bool requestMayHaveSucceeded = false}) {
@@ -66,14 +77,25 @@ class SessionCoordinator {
     _ensureTransition(generation);
     await _storage.clearTokens();
     _ensureTransition(generation);
+    _safeGeneration = generation;
+    return tokens;
+  });
+
+  /// Ordered with other credential operations, even if superseded by login.
+  Future<AuthTokens?> takeForLogout(int generation) => _serialize(() async {
+    final tokens = await _storage.getTokens();
+    await _storage.clearTokens();
+    if (_generation == generation) _safeGeneration = generation;
     return tokens;
   });
 
   Future<void> saveTransition(int generation, AuthTokens tokens) {
     return _serialize(() async {
       _ensureTransition(generation);
+      _safeGeneration = null;
       await _storage.saveTokens(tokens);
       _ensureTransition(generation);
+      _safeGeneration = generation;
     });
   }
 

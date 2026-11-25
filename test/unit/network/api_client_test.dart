@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -545,10 +546,12 @@ void main() {
           ),
         );
 
+        final started = Completer<void>();
+        final release = Completer<void>();
         final mockClient = MockClient((request) async {
           if (request.url.path == '/api/v1/auth/refresh') {
-            // Delay refresh response
-            await Future<void>.delayed(const Duration(milliseconds: 50));
+            started.complete();
+            await release.future;
             return http.Response(
               jsonEncode({
                 'data': {
@@ -580,7 +583,9 @@ void main() {
           throwsA(isA<SessionChangedException>()),
         );
         // Concurrently log out while refresh is awaiting response
+        await started.future;
         await apiClient.logout();
+        release.complete();
 
         await refreshFuture;
 

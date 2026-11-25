@@ -105,6 +105,7 @@ class OfflineSyncEngine {
     int retryCount = 0;
 
     try {
+      final generation = apiClient.captureSessionGeneration();
       // Recover any unclosed syncing actions first
       await queue.recoverStuckSyncing(userId: currentUserId);
 
@@ -130,6 +131,7 @@ class OfflineSyncEngine {
         final inFlight = action.copyWith(status: SyncStatus.syncing);
         await queue.updateAction(inFlight);
 
+        var serverAcknowledged = false;
         try {
           final headers = <String, String>{
             'Idempotency-Key': action.idempotencyKey,
@@ -143,7 +145,9 @@ class OfflineSyncEngine {
             path: action.endpoint,
             body: action.payload,
             headers: headers,
+            expectedSessionGeneration: generation,
           );
+          serverAcknowledged = true;
 
           // Success: 2xx confirmed by backend
           final synced = inFlight.copyWith(
@@ -158,13 +162,14 @@ class OfflineSyncEngine {
           );
         } on SessionChangedException catch (e) {
           final uncertain = inFlight.copyWith(
-            status: e.requestMayHaveSucceeded
+            status: e.requiresReconciliation
                 ? SyncStatus.conflict
                 : SyncStatus.pending,
             errorMessage: e.toString(),
+            conflictDetails: e.conflictDetails,
           );
           await queue.updateAction(uncertain);
-          if (e.requestMayHaveSucceeded) {
+          if (e.requiresReconciliation) {
             conflictCount++;
             _eventController.add(
               SyncEvent(type: SyncEventType.actionConflict, action: uncertain),
@@ -278,6 +283,7 @@ class OfflineSyncEngine {
             ),
           );
         } catch (e) {
+          if (serverAcknowledged) rethrow;
           final retriedAction = inFlight.copyWith(
             status: SyncStatus.pending,
             retryCount: inFlight.retryCount + 1,

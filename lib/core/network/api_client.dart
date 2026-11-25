@@ -22,6 +22,7 @@ class ApiClient {
   final UnauthenticatedCallback? onUnauthenticated;
 
   final SessionCoordinator _session;
+  Future<void>? _logoutBarrier;
   final TokenRefreshCoordinator _refreshCoordinator = TokenRefreshCoordinator();
 
   ApiClient({
@@ -90,6 +91,11 @@ class ApiClient {
     _refreshCoordinator.invalidate();
     try {
       await _session.takeAndClear(generation);
+      try {
+        await _logoutBarrier;
+      } catch (_) {
+        // This transition has already cleared the local credentials safely.
+      }
       final response = await _httpClient.post(
         _endpoints.resolve(path),
         headers: _buildHeaders(),
@@ -105,7 +111,7 @@ class ApiClient {
   }
 
   /// Rotate refresh tokens once per active session generation.
-  Future<AuthTokens> refresh({String deviceName = 'flutter-mobile'}) {
+  Future<AuthTokens> refresh({String deviceName = 'flutter-mobile'}) async {
     return _refreshForGeneration(_session.current, deviceName: deviceName);
   }
 
@@ -178,15 +184,32 @@ class ApiClient {
   }
 
   /// Evict local credentials first, then revoke the captured remote session.
-  Future<void> logout({bool allDevices = false}) async {
+  Future<void> logout({bool allDevices = false}) {
     final generation = _session.beginTransition();
     _refreshCoordinator.invalidate();
+    final capture = _session.takeForLogout(generation);
+    final previous = _logoutBarrier;
+    final revocation = _revokeCaptured(generation, capture, previous, allDevices);
+    _logoutBarrier = revocation;
+    return revocation;
+  }
+
+  Future<void> _revokeCaptured(
+    int generation,
+    Future<AuthTokens?> capture,
+    Future<void>? previous,
+    bool allDevices,
+  ) async {
     final AuthTokens? tokens;
     try {
-      tokens = await _session.takeAndClear(generation);
+      tokens = await capture;
     } finally {
       _session.finishTransition(generation);
     }
+    // Earlier remote logout failures must not prevent a later retry.
+    try {
+      await previous;
+    } catch (_) {}
     if (tokens == null) return;
     try {
       await _httpClient.post(
@@ -251,6 +274,8 @@ class ApiClient {
     });
   }
 
+  int captureSessionGeneration() => _session.current;
+
   /// Perform generic authenticated HTTP request (GET, POST, PUT, PATCH, DELETE)
   /// with optional custom headers and automatic token refresh on 401.
   Future<Map<String, dynamic>> request({
@@ -258,6 +283,7 @@ class ApiClient {
     required String path,
     Map<String, dynamic>? body,
     Map<String, String>? headers,
+    int? expectedSessionGeneration,
   }) async {
     return _sendWithAuth((token) {
       final uri = _endpoints.resolve(path);
@@ -296,18 +322,19 @@ class ApiClient {
         default:
           throw ArgumentError('Unsupported HTTP method: $method');
       }
-    });
+    }, expectedGeneration: expectedSessionGeneration);
   }
 
   /// Retry a rejected request only within the session that dispatched it.
   Future<Map<String, dynamic>> _sendWithAuth(
-    Future<http.Response> Function(String? token) executeRequest,
-  ) async {
-    final generation = _session.current;
+    Future<http.Response> Function(String? token) executeRequest, {
+    int? expectedGeneration,
+  }) async {
+    final generation = expectedGeneration ?? _session.current;
     final initialTokens = await _session.read(generation);
     final usedToken = initialTokens?.accessToken;
     _session.ensureCurrent(generation);
-    var response = await executeRequest(usedToken);
+    var response = await _dispatch(generation, executeRequest, usedToken);
     _checkResponseSession(generation, response);
 
     if (response.statusCode == 401 && initialTokens != null) {
@@ -317,18 +344,45 @@ class ApiClient {
           ? currentTokens.accessToken
           : (await _refreshForGeneration(generation)).accessToken;
       _session.ensureCurrent(generation);
-      response = await executeRequest(retryToken);
+      response = await _dispatch(generation, executeRequest, retryToken);
       _checkResponseSession(generation, response);
     }
 
     return _responseDecoder.decode(response);
   }
 
+  Future<http.Response> _dispatch(
+    int generation,
+    Future<http.Response> Function(String? token) executeRequest,
+    String? token,
+  ) async {
+    _session.ensureCurrent(generation);
+    final pending = executeRequest(token);
+    try {
+      return await pending;
+    } catch (_) {
+      _session.ensureCurrent(generation, requestMayHaveSucceeded: true);
+      rethrow;
+    }
+  }
+
   void _checkResponseSession(int generation, http.Response response) {
-    _session.ensureCurrent(
-      generation,
-      requestMayHaveSucceeded:
-          response.statusCode >= 200 && response.statusCode < 300,
-    );
+    try {
+      _session.ensureCurrent(
+        generation,
+        requestMayHaveSucceeded:
+            response.statusCode >= 200 && response.statusCode < 300,
+      );
+    } on SessionChangedException {
+      if (response.statusCode == 409) {
+        try {
+          _responseDecoder.decode(response);
+        } on ProblemDetailsException catch (error) {
+          throw SessionChangedException(conflictDetails: error.extensions);
+        }
+        throw const SessionChangedException(conflictDetails: {});
+      }
+      rethrow;
+    }
   }
 }

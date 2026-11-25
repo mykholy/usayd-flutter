@@ -39,12 +39,7 @@ class OfflineActionQueue {
     required String userId,
   }) async {
     final all = await getAllActions(userId: userId);
-    final pending = all
-        .where(
-          (a) =>
-              a.status == SyncStatus.pending || a.status == SyncStatus.syncing,
-        )
-        .toList();
+    final pending = all.where((a) => a.status == SyncStatus.pending).toList();
     pending.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return pending;
   }
@@ -113,13 +108,16 @@ class OfflineActionQueue {
     return actions.where((a) => a.status == SyncStatus.conflict).length;
   }
 
-  /// On startup or recovery, reset any actions stuck in syncing back to pending.
+  /// Quarantine interrupted writes until server reconciliation is possible.
   Future<int> recoverStuckSyncing({required String userId}) async {
     final all = await getAllActions(userId: userId);
     int recovered = 0;
     for (final action in all) {
       if (action.status == SyncStatus.syncing) {
-        final updated = action.copyWith(status: SyncStatus.pending);
+        final updated = action.copyWith(
+          status: SyncStatus.conflict,
+          errorMessage: 'Interrupted sync requires reconciliation.',
+        );
         await updateAction(updated);
         recovered++;
       }
