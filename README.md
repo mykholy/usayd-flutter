@@ -18,8 +18,8 @@ Independent Flutter mobile application for **أكاديمية أُسَيْد (Us
 ## Local Development & Running
 
 ### Prerequisites
-- Flutter SDK 3.x+ (`flutter --version`)
-- Dart SDK 3.x+
+- Flutter stable with Dart SDK compatible with `pubspec.yaml` (`flutter --version`)
+- Dart SDK ^3.10.7
 - Android Studio / Xcode configured
 
 ### Run by Flavor
@@ -33,6 +33,8 @@ flutter run -t lib/main_staging.dart --flavor staging
 # Production flavor
 flutter run -t lib/main_prod.dart --flavor prod
 ```
+
+All three flavors have distinct Android and iOS application identifiers. Use an explicit `--flavor` for release builds. For physical development devices, supply `--dart-define=DEV_API_BASE_URL=https://your-dev-host/api/v1`. See the flavor guide for signing and Firebase prerequisites.
 
 ### Quality & Test Suite
 ```bash
