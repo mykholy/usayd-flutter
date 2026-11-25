@@ -34,7 +34,7 @@ flutter run -t lib/main_staging.dart --flavor staging
 flutter run -t lib/main_prod.dart --flavor prod
 ```
 
-Android flavors have distinct application identifiers; iOS native configuration is tracked separately. Use an explicit `--flavor` for release builds. For physical development devices, supply `--dart-define=DEV_API_BASE_URL=https://your-dev-host/api/v1`. See the flavor guide for signing and Firebase prerequisites.
+All three flavors have distinct Android and iOS application identifiers. Use an explicit `--flavor` for release builds. For physical development devices, supply `--dart-define=DEV_API_BASE_URL=https://your-dev-host/api/v1`. See the flavor guide for signing and Firebase prerequisites.
 
 ### Quality & Test Suite
 ```bash

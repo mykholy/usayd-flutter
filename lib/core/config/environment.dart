@@ -15,12 +15,16 @@ void configureEnvironment(
     case AppFlavor.dev:
       final url = devApiBaseUrl.isEmpty ? localUrl : devApiBaseUrl;
       final uri = Uri.tryParse(url);
+      final rawHost = uri?.host.toLowerCase() ?? '';
+      final host = rawHost.endsWith('.')
+          ? rawHost.substring(0, rawHost.length - 1)
+          : rawHost;
       if (uri == null ||
           !['http', 'https'].contains(uri.scheme) ||
           uri.host.isEmpty ||
           uri.userInfo.isNotEmpty ||
-          uri.host.toLowerCase() == 'api.usayd.academy' ||
-          uri.host.toLowerCase() == 'staging-api.usayd.academy') {
+          host == 'api.usayd.academy' ||
+          host == 'staging-api.usayd.academy') {
         throw ArgumentError('Invalid development API endpoint');
       }
       FlavorConfig.init(
