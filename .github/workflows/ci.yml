@@ -2,7 +2,7 @@ name: Flutter CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [dev, staging, main]
   merge_group:
 permissions:
   contents: read
@@ -45,6 +45,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version-file: .fvmrc
 
       - name: Install dependencies
         if: steps.state.outputs.is_bootstrapped == 'true'
