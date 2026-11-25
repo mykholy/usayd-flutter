@@ -6,6 +6,8 @@ import 'package:usayd_flutter/core/offline/models/local_draft.dart';
 import 'package:usayd_flutter/core/offline/models/sync_status.dart';
 import 'package:usayd_flutter/core/offline/storage/offline_storage.dart';
 
+const _user = 'default_user';
+
 void main() {
   group('DraftRepository', () {
     late InMemoryOfflineStorage storage;
@@ -36,7 +38,7 @@ void main() {
 
       await repository.saveDraft(draft);
 
-      final retrieved = await repository.getDraft('draft-001');
+      final retrieved = await repository.getDraft('draft-001', userId: _user);
       expect(retrieved, isNotNull);
       expect(retrieved!.id, equals('draft-001'));
       expect(retrieved.draftType, equals('recitation_submission'));
@@ -73,12 +75,15 @@ void main() {
         await repository.saveDraft(d2);
         await repository.saveDraft(d3);
 
-        final quizzes = await repository.listDrafts(draftType: 'quiz_response');
+        final quizzes = await repository.listDrafts(
+          userId: _user,
+          draftType: 'quiz_response',
+        );
         expect(quizzes.length, equals(2));
         expect(quizzes[0].id, equals('d3')); // Newest first
         expect(quizzes[1].id, equals('d1'));
 
-        final all = await repository.listDrafts();
+        final all = await repository.listDrafts(userId: _user);
         expect(all.length, equals(3));
       },
     );
@@ -96,14 +101,39 @@ void main() {
 
       await repository.markConflict('d-conf', {
         'server_text': 'Teacher modified notes',
-      });
+      }, userId: _user);
 
-      final updated = await repository.getDraft('d-conf');
+      final updated = await repository.getDraft('d-conf', userId: _user);
       expect(updated!.status, equals(SyncStatus.conflict));
       expect(
         updated.conflictData?['server_text'],
         equals('Teacher modified notes'),
       );
+    });
+
+    test('scoped draft operations never cross accounts', () async {
+      final draft = LocalDraft(
+        id: 'shared-id',
+        userId: 'account-a',
+        draftType: 'notes',
+        data: {'text': 'private'},
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      await repository.saveDraft(draft);
+      expect(
+        await repository.getDraft('shared-id', userId: 'account-b'),
+        isNull,
+      );
+      expect(await repository.listDrafts(userId: 'account-b'), isEmpty);
+      await repository.markConflict('shared-id', {}, userId: 'account-b');
+      await repository.deleteDraft('shared-id', userId: 'account-b');
+      final original = await repository.getDraft(
+        'shared-id',
+        userId: 'account-a',
+      );
+      expect(original?.status, SyncStatus.pending);
+      expect(original?.data['text'], 'private');
     });
 
     test('deletes draft successfully', () async {
@@ -116,10 +146,10 @@ void main() {
       );
 
       await repository.saveDraft(draft);
-      expect(await repository.getDraft('d-del'), isNotNull);
+      expect(await repository.getDraft('d-del', userId: _user), isNotNull);
 
-      await repository.deleteDraft('d-del');
-      expect(await repository.getDraft('d-del'), isNull);
+      await repository.deleteDraft('d-del', userId: _user);
+      expect(await repository.getDraft('d-del', userId: _user), isNull);
     });
   });
 }

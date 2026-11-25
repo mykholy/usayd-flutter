@@ -13,6 +13,8 @@ import 'package:usayd_flutter/core/offline/offline_queue.dart';
 import 'package:usayd_flutter/core/offline/storage/offline_storage.dart';
 import 'package:usayd_flutter/core/offline/sync_engine.dart';
 
+const _user = 'default_user';
+
 void main() {
   group('OfflineSyncEngine', () {
     late InMemoryOfflineStorage storage;
@@ -77,7 +79,7 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll();
+        final result = await engine.syncAll(currentUserId: _user);
 
         expect(result.syncedCount, equals(2));
         expect(result.conflictCount, equals(0));
@@ -88,7 +90,7 @@ void main() {
           '/api/v1/lessons/step2',
         ]);
 
-        final a1 = await queue.getAction('act-1');
+        final a1 = await queue.getAction('act-1', userId: _user);
         expect(a1!.status, equals(SyncStatus.synced));
         expect(a1.syncedAt, isNotNull);
 
@@ -133,13 +135,13 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll();
+        final result = await engine.syncAll(currentUserId: _user);
 
         expect(result.conflictCount, equals(1));
         expect(result.syncedCount, equals(0));
         expect(result.hasConflicts, isTrue);
 
-        final action = await queue.getAction('act-conflict');
+        final action = await queue.getAction('act-conflict', userId: _user);
         expect(action!.status, equals(SyncStatus.conflict));
         expect(
           action.errorMessage,
@@ -177,12 +179,12 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll();
+        final result = await engine.syncAll(currentUserId: _user);
 
         expect(result.retryCount, equals(1));
         expect(result.syncedCount, equals(0));
 
-        final action = await queue.getAction('act-net');
+        final action = await queue.getAction('act-net', userId: _user);
         expect(action!.status, equals(SyncStatus.pending));
         expect(action.retryCount, equals(1));
         expect(action.errorMessage, contains('Network connection unreachable'));
@@ -214,12 +216,12 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll();
+      final result = await engine.syncAll(currentUserId: _user);
       expect(result.conflictCount, 1);
       expect(result.retryCount, 0);
-      final action = await queue.getAction('malformed-success');
+      final action = await queue.getAction('malformed-success', userId: _user);
       expect(action?.status, SyncStatus.conflict);
-      await engine.syncAll();
+      await engine.syncAll(currentUserId: _user);
       expect(dispatches, 1);
     });
 
@@ -259,10 +261,10 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll();
+      final result = await engine.syncAll(currentUserId: _user);
       expect(result.conflictCount, 0);
       expect(result.retryCount, 1);
-      final action = await queue.getAction('malformed-refresh');
+      final action = await queue.getAction('malformed-refresh', userId: _user);
       expect(action?.status, SyncStatus.pending);
       expect(mutationCalls, 1);
       expect(refreshCalls, 1);
@@ -302,10 +304,10 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll();
+      final result = await engine.syncAll(currentUserId: _user);
 
       expect(result.failedCount, equals(1));
-      final action = await queue.getAction('act-val');
+      final action = await queue.getAction('act-val', userId: _user);
       expect(action!.status, equals(SyncStatus.failed));
 
       engine.dispose();
@@ -345,12 +347,12 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll();
+      final result = await engine.syncAll(currentUserId: _user);
 
       expect(result.retryCount, equals(1));
       expect(result.failedCount, equals(0));
 
-      final action = await queue.getAction('act-rate');
+      final action = await queue.getAction('act-rate', userId: _user);
       expect(action!.status, equals(SyncStatus.pending));
       expect(action.retryCount, equals(1));
       expect(action.errorMessage, contains('Rate limited'));

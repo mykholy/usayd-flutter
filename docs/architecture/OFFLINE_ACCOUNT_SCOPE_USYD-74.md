@@ -1,0 +1,5 @@
+# USYD-74 / USYD-T0081 — Explicit offline account scope
+
+Draft proposal. All draft and queue lookup, listing, removal and recovery methods require an explicit user ID; a scoped lookup miss never scans other accounts. Decoded records must match the requested owner and ID before lookup or deletion. Sync requires an explicit account, and concurrent calls for a different account fail rather than share another account's future. The presentation widget delegates sync to its caller, which must bind the authenticated account.
+
+Existing storage keys and encrypted payloads remain unchanged. Existing default_user fixtures now explicitly supply their fixture identity. This does not establish authenticated identity or guarantee account-switch safety during an in-flight HTTP call. Remaining work: session-bound transport, legacy key collision-safe migration, atomic enqueue across writers, persistent retry schedule and namespace-safe clearing. Sensitive data review, canonical source verification and full CI required before merge.

@@ -55,6 +55,7 @@ class OfflineSyncEngine {
 
   bool _isSyncing = false;
   Future<SyncResult>? _activeSyncFuture;
+  String? _activeUserId;
   final StreamController<SyncEvent> _eventController =
       StreamController<SyncEvent>.broadcast();
 
@@ -68,23 +69,32 @@ class OfflineSyncEngine {
   Stream<SyncEvent> get eventStream => _eventController.stream;
 
   /// Recover any actions stuck in syncing state from previous ungraceful shutdown.
-  Future<int> recoverAbandonedSyncing({String? currentUserId}) async {
+  Future<int> recoverAbandonedSyncing({required String currentUserId}) async {
     return queue.recoverStuckSyncing(userId: currentUserId);
   }
 
   /// Single-flight sync: returns the active in-flight future if already synchronizing.
-  Future<SyncResult> syncAll({String? currentUserId}) {
+  Future<SyncResult> syncAll({required String currentUserId}) {
+    if (currentUserId.trim().isEmpty) {
+      return Future.error(ArgumentError.value(currentUserId, 'currentUserId'));
+    }
     if (_activeSyncFuture != null) {
+      if (_activeUserId != currentUserId) {
+        return Future.error(StateError('Another account is synchronizing.'));
+      }
       return _activeSyncFuture!;
     }
 
-    _activeSyncFuture = _executeSync(currentUserId: currentUserId);
-    return _activeSyncFuture!.whenComplete(() {
+    _activeUserId = currentUserId;
+    final future = _executeSync(currentUserId: currentUserId).whenComplete(() {
       _activeSyncFuture = null;
+      _activeUserId = null;
     });
+    _activeSyncFuture = future;
+    return future;
   }
 
-  Future<SyncResult> _executeSync({String? currentUserId}) async {
+  Future<SyncResult> _executeSync({required String currentUserId}) async {
     _isSyncing = true;
     _eventController.add(SyncEvent(type: SyncEventType.started));
 
@@ -103,7 +113,7 @@ class OfflineSyncEngine {
 
       for (final action in pendingActions) {
         // Guard: account isolation validation
-        if (currentUserId != null && action.userId != currentUserId) {
+        if (action.userId != currentUserId) {
           _eventController.add(
             SyncEvent(
               type: SyncEventType.actionFailed,
