@@ -214,7 +214,7 @@ void main() {
       );
     });
 
-    test('quarantines interrupted syncing actions for reconciliation', () async {
+    test('quarantines interrupted syncing actions', () async {
       final stuckAction = OfflineAction(
         id: 'stuck-001',
         userId: 'usr_111',

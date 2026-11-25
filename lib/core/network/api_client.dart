@@ -189,7 +189,12 @@ class ApiClient {
     _refreshCoordinator.invalidate();
     final capture = _session.takeForLogout(generation);
     final previous = _logoutBarrier;
-    final revocation = _revokeCaptured(generation, capture, previous, allDevices);
+    final revocation = _revokeCaptured(
+      generation,
+      capture,
+      previous,
+      allDevices,
+    );
     _logoutBarrier = revocation;
     return revocation;
   }
@@ -285,7 +290,7 @@ class ApiClient {
     Map<String, String>? headers,
     int? expectedSessionGeneration,
   }) async {
-    return _sendWithAuth((token) {
+    Future<http.Response> execute(String? token) {
       final uri = _endpoints.resolve(path);
       final combinedHeaders = _buildHeaders(token: token);
       if (headers != null) {
@@ -322,7 +327,12 @@ class ApiClient {
         default:
           throw ArgumentError('Unsupported HTTP method: $method');
       }
-    }, expectedGeneration: expectedSessionGeneration);
+    }
+
+    return _sendWithAuth(
+      execute,
+      expectedGeneration: expectedSessionGeneration,
+    );
   }
 
   /// Retry a rejected request only within the session that dispatched it.

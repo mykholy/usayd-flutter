@@ -115,6 +115,66 @@ void main() {
     await pending;
     expect(await storage.getTokens(), isNull);
   });
+  test('stale transport failure requires reconciliation', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/login')) return _tokens(_new);
+        started.complete();
+        return reply.future;
+      }),
+    );
+    final pending = expectLater(
+      api.post('/api/v1/notes'),
+      throwsA(
+        isA<SessionChangedException>().having(
+          (error) => error.requiresReconciliation,
+          'requiresReconciliation',
+          isTrue,
+        ),
+      ),
+    );
+    await started.future;
+    await api.login(email: 'new@example.invalid', password: 'fixture');
+    reply.completeError(http.ClientException('Fixture transport failure'));
+    await pending;
+  });
+
+  test('stale conflict preserves reconciliation disposition', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/login')) return _tokens(_new);
+        started.complete();
+        return reply.future;
+      }),
+    );
+    final pending = expectLater(
+      api.post('/api/v1/notes'),
+      throwsA(
+        isA<SessionChangedException>().having(
+          (error) => error.requiresReconciliation,
+          'requiresReconciliation',
+          isTrue,
+        ),
+      ),
+    );
+    await started.future;
+    await api.login(email: 'new@example.invalid', password: 'fixture');
+    reply.complete(http.Response('{"status":409}', 409));
+    await pending;
+  });
+
   test('overlapping logout revokes old credentials before login', () async {
     final storage = InMemoryAuthTokenStorage();
     await storage.saveTokens(_old);
