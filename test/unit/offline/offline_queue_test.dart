@@ -32,7 +32,7 @@ void main() {
 
       await queue.enqueue(action);
 
-      final retrieved = await queue.getAction('act-001');
+      final retrieved = await queue.getAction('act-001', userId: 'default_user');
       expect(retrieved, isNotNull);
       expect(retrieved!.id, equals('act-001'));
       expect(retrieved.endpoint, equals('/api/v1/recitations'));
@@ -72,7 +72,7 @@ void main() {
         await queue.enqueue(a3);
         await queue.enqueue(a1);
 
-        final pending = await queue.getPendingActions();
+        final pending = await queue.getPendingActions(userId: 'default_user');
         expect(pending.length, equals(3));
         expect(pending[0].id, equals('act-001'));
         expect(pending[1].id, equals('act-002'));
@@ -104,7 +104,7 @@ void main() {
       expect(r1.id, equals('act-001'));
       expect(r2.id, equals('act-001'));
 
-      final all = await queue.getAllActions();
+      final all = await queue.getAllActions(userId: 'default_user');
       expect(all.length, equals(1));
     });
 
@@ -143,12 +143,12 @@ void main() {
         await queue.enqueue(synced);
         await queue.enqueue(conflict);
 
-        expect(await queue.getPendingCount(), equals(1));
-        expect(await queue.getConflictCount(), equals(1));
+        expect(await queue.getPendingCount(userId: 'default_user'), equals(1));
+        expect(await queue.getConflictCount(userId: 'default_user'), equals(1));
 
-        await queue.clearSynced();
+        await queue.clearSynced(userId: 'default_user');
 
-        final remaining = await queue.getAllActions();
+        final remaining = await queue.getAllActions(userId: 'default_user');
         expect(remaining.length, equals(2));
         expect(remaining.any((a) => a.id == 's1'), isFalse);
       },
@@ -191,6 +191,23 @@ void main() {
         expect(user2Actions.first.id, equals('u2-act-001'));
       },
     );
+
+    test('scoped lookup and removal never fall back to another user', () async {
+      final action = OfflineAction(
+        id: 'shared-id',
+        userId: 'account-a',
+        endpoint: '/api/v1/notes',
+        method: 'POST',
+        payload: {'text': 'private'},
+        idempotencyKey: 'idem-a',
+        createdAt: DateTime.now(),
+      );
+      await queue.enqueue(action);
+      expect(await queue.getAction('shared-id', userId: 'account-b'), isNull);
+      expect(await queue.getAllActions(userId: 'account-b'), isEmpty);
+      await queue.removeAction('shared-id', userId: 'account-b');
+      expect(await queue.getAction('shared-id', userId: 'account-a'), isNotNull);
+    });
 
     test('recovers actions stuck in syncing state back to pending', () async {
       final stuckAction = OfflineAction(

@@ -119,7 +119,7 @@ class OfflineSyncIndicator extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           InkWell(
-            onTap: onSyncPressed ?? () => syncEngine.syncAll(),
+            onTap: onSyncPressed,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

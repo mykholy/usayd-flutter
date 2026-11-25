@@ -76,7 +76,7 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll();
+        final result = await engine.syncAll(currentUserId: 'default_user');
 
         expect(result.syncedCount, equals(2));
         expect(result.conflictCount, equals(0));
@@ -87,7 +87,7 @@ void main() {
           '/api/v1/lessons/step2',
         ]);
 
-        final a1 = await queue.getAction('act-1');
+        final a1 = await queue.getAction('act-1', userId: 'default_user');
         expect(a1!.status, equals(SyncStatus.synced));
         expect(a1.syncedAt, isNotNull);
 
@@ -132,13 +132,13 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll();
+        final result = await engine.syncAll(currentUserId: 'default_user');
 
         expect(result.conflictCount, equals(1));
         expect(result.syncedCount, equals(0));
         expect(result.hasConflicts, isTrue);
 
-        final action = await queue.getAction('act-conflict');
+        final action = await queue.getAction('act-conflict', userId: 'default_user');
         expect(action!.status, equals(SyncStatus.conflict));
         expect(
           action.errorMessage,
@@ -176,12 +176,12 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll();
+        final result = await engine.syncAll(currentUserId: 'default_user');
 
         expect(result.retryCount, equals(1));
         expect(result.syncedCount, equals(0));
 
-        final action = await queue.getAction('act-net');
+        final action = await queue.getAction('act-net', userId: 'default_user');
         expect(action!.status, equals(SyncStatus.pending));
         expect(action.retryCount, equals(1));
         expect(action.errorMessage, contains('Network connection unreachable'));
@@ -224,10 +224,10 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll();
+      final result = await engine.syncAll(currentUserId: 'default_user');
 
       expect(result.failedCount, equals(1));
-      final action = await queue.getAction('act-val');
+      final action = await queue.getAction('act-val', userId: 'default_user');
       expect(action!.status, equals(SyncStatus.failed));
 
       engine.dispose();
@@ -267,12 +267,12 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll();
+      final result = await engine.syncAll(currentUserId: 'default_user');
 
       expect(result.retryCount, equals(1));
       expect(result.failedCount, equals(0));
 
-      final action = await queue.getAction('act-rate');
+      final action = await queue.getAction('act-rate', userId: 'default_user');
       expect(action!.status, equals(SyncStatus.pending));
       expect(action.retryCount, equals(1));
       expect(action.errorMessage, contains('Rate limited'));
