@@ -107,9 +107,7 @@ void main() {
         );
 
         await tester.pumpWidget(
-
           authenticatedAppFixture(initialPreferences: prefs),
-
         );
         await tester.pumpAndSettle();
 
