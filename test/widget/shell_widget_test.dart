@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/flavor_config.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/config/user_preferences.dart';
 import 'package:usayd_flutter/core/localization/app_locale.dart';
+import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
   setUpAll(() {
@@ -22,8 +22,8 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        const UsaydApp(
-          initialPreferences: UserPreferences(
+        authenticatedAppFixture(
+          initialPreferences: const UserPreferences(
             interfaceMode: InterfaceMode.pro,
             locale: AppLocale.ar,
           ),
@@ -44,8 +44,8 @@ void main() {
       'Kids mode renders 4 navigation destinations in NavigationBar',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.kids,
               locale: AppLocale.ar,
             ),
@@ -66,8 +66,8 @@ void main() {
       'Simple mode renders 3 navigation destinations in NavigationBar',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.simple,
               locale: AppLocale.ar,
             ),
@@ -87,8 +87,8 @@ void main() {
       'Tapping navigation destination switches visible screen content',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.pro,
               locale: AppLocale.ar,
             ),
@@ -116,8 +116,8 @@ void main() {
       'Switching mode from Pro to Simple safely clamps active tab index',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.pro,
               locale: AppLocale.ar,
             ),
@@ -150,8 +150,8 @@ void main() {
       'AdaptiveShell configures resizeToAvoidBottomInset for keyboard safety',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(
               interfaceMode: InterfaceMode.pro,
             ),
           ),

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/localization/app_locale.dart';
 import 'package:usayd_flutter/core/widgets/screen_state_view.dart';
 import '../helpers/test_harness.dart';
+import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
   setUp(() {
@@ -15,7 +15,9 @@ void main() {
     testWidgets('Full UsaydApp renders canopy, brand mark, and shell', (
       tester,
     ) async {
-      await tester.pumpWidget(const UsaydApp(initialMode: InterfaceMode.pro));
+      await tester.pumpWidget(
+        authenticatedAppFixture(initialMode: InterfaceMode.pro),
+      );
       await tester.pumpAndSettle();
 
       // Brand mark and sacred name

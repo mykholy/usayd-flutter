@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/flavor_config.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/config/user_preferences.dart';
 import 'package:usayd_flutter/core/localization/app_locale.dart';
 import 'package:usayd_flutter/core/theme/usayd_colors.dart';
+import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
   setUpAll(() {
@@ -23,8 +23,8 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        const UsaydApp(
-          initialPreferences: UserPreferences(locale: AppLocale.ar),
+        authenticatedAppFixture(
+          initialPreferences: const UserPreferences(locale: AppLocale.ar),
         ),
       );
       await tester.pumpAndSettle();
@@ -43,8 +43,8 @@ void main() {
       'Switching language to English updates directionality to LTR dynamically',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(locale: AppLocale.ar),
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(locale: AppLocale.ar),
           ),
         );
         await tester.pumpAndSettle();
@@ -69,8 +69,8 @@ void main() {
       'Toggling theme mode between light and dark updates color scheme',
       (tester) async {
         await tester.pumpWidget(
-          const UsaydApp(
-            initialPreferences: UserPreferences(
+          authenticatedAppFixture(
+            initialPreferences: const UserPreferences(
               themeMode: ThemeMode.light,
               interfaceMode: InterfaceMode.pro,
             ),
@@ -106,7 +106,9 @@ void main() {
           timezone: 'Asia/Riyadh',
         );
 
-        await tester.pumpWidget(const UsaydApp(initialPreferences: prefs));
+        await tester.pumpWidget(
+          authenticatedAppFixture(initialPreferences: prefs),
+        );
         await tester.pumpAndSettle();
 
         expect(find.text('SA'), findsOneWidget);

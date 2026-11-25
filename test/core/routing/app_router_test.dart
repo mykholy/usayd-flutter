@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
 import 'package:usayd_flutter/core/config/user_preferences.dart';
 import 'package:usayd_flutter/core/network/models/user_profile.dart';
@@ -9,6 +8,7 @@ import 'package:usayd_flutter/core/routing/app_router.dart';
 import 'package:usayd_flutter/core/routing/auth_state_notifier.dart';
 import 'package:usayd_flutter/core/routing/route_guard.dart';
 import 'package:usayd_flutter/features/home/presentation/screens/home_screen.dart';
+import '../../helpers/authenticated_app_fixture.dart';
 
 void main() {
   group('RouteGuard Unit Tests', () {
@@ -242,7 +242,7 @@ void main() {
     testWidgets(
       'UsaydApp root widget renders via MaterialApp.router and route guard',
       (tester) async {
-        await tester.pumpWidget(const UsaydApp());
+        await tester.pumpWidget(authenticatedAppFixture());
         await tester.pumpAndSettle();
 
         expect(find.byType(HomeScreen), findsOneWidget);
