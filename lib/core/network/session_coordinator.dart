@@ -33,10 +33,7 @@ class SessionCoordinator {
     if (generation == _generation) _transitioning = false;
   }
 
-  void ensureCurrent(
-    int generation, {
-    bool requestMayHaveSucceeded = false,
-  }) {
+  void ensureCurrent(int generation, {bool requestMayHaveSucceeded = false}) {
     if (_generation != generation || _transitioning) {
       throw SessionChangedException(
         requestMayHaveSucceeded: requestMayHaveSucceeded,
@@ -52,10 +49,7 @@ class SessionCoordinator {
 
   Future<T> _serialize<T>(Future<T> Function() operation) {
     final result = _tail.then((_) => operation());
-    _tail = result.then<void>(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {},
-    );
+    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return result;
   }
 
@@ -75,12 +69,13 @@ class SessionCoordinator {
     return tokens;
   });
 
-  Future<void> saveTransition(int generation, AuthTokens tokens) =>
-      _serialize(() async {
-        _ensureTransition(generation);
-        await _storage.saveTokens(tokens);
-        _ensureTransition(generation);
-      });
+  Future<void> saveTransition(int generation, AuthTokens tokens) {
+    return _serialize(() async {
+      _ensureTransition(generation);
+      await _storage.saveTokens(tokens);
+      _ensureTransition(generation);
+    });
+  }
 
   Future<void> saveRefreshed(
     int generation,
