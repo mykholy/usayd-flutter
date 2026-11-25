@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'api_endpoint_resolver.dart';
+import 'api_response_decoder.dart';
 import 'models/auth_tokens.dart';
 import 'models/user_profile.dart';
 import 'problem_details_exception.dart';
@@ -11,6 +13,8 @@ typedef UnauthenticatedCallback = void Function();
 class ApiClient {
   final String baseUrl;
   final http.Client _httpClient;
+  final ApiEndpointResolver _endpoints;
+  final ApiResponseDecoder _responseDecoder = const ApiResponseDecoder();
   final AuthTokenStorage tokenStorage;
   final LocaleProvider? localeProvider;
   final UnauthenticatedCallback? onUnauthenticated;
@@ -23,11 +27,8 @@ class ApiClient {
     required this.tokenStorage,
     this.localeProvider,
     this.onUnauthenticated,
-  }) : _httpClient = httpClient ?? http.Client();
-
-  String get _normalizedBaseUrl => baseUrl.endsWith('/')
-      ? baseUrl.substring(0, baseUrl.length - 1)
-      : baseUrl;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _endpoints = ApiEndpointResolver(baseUrl);
 
   Map<String, String> _buildHeaders({String? token}) {
     final locale = localeProvider != null ? localeProvider!() : 'ar';
@@ -54,7 +55,7 @@ class ApiClient {
     String? locale,
     String deviceName = 'flutter-mobile',
   }) async {
-    final uri = Uri.parse('$_normalizedBaseUrl/api/v1/auth/register');
+    final uri = _endpoints.resolve('/api/v1/auth/register');
     final response = await _httpClient.post(
       uri,
       headers: _buildHeaders(),
@@ -68,7 +69,7 @@ class ApiClient {
       }),
     );
 
-    final json = _handleResponse(response);
+    final json = _responseDecoder.decode(response);
     final tokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
     await tokenStorage.saveTokens(tokens);
     return tokens;
@@ -80,7 +81,7 @@ class ApiClient {
     required String password,
     String deviceName = 'flutter-mobile',
   }) async {
-    final uri = Uri.parse('$_normalizedBaseUrl/api/v1/auth/login');
+    final uri = _endpoints.resolve('/api/v1/auth/login');
     final response = await _httpClient.post(
       uri,
       headers: _buildHeaders(),
@@ -91,7 +92,7 @@ class ApiClient {
       }),
     );
 
-    final json = _handleResponse(response);
+    final json = _responseDecoder.decode(response);
     final tokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
     await tokenStorage.saveTokens(tokens);
     return tokens;
@@ -127,7 +128,7 @@ class ApiClient {
       );
     }
 
-    final uri = Uri.parse('$_normalizedBaseUrl/api/v1/auth/refresh');
+    final uri = _endpoints.resolve('/api/v1/auth/refresh');
     final http.Response response;
     try {
       response = await _httpClient.post(
@@ -149,8 +150,15 @@ class ApiClient {
       onUnauthenticated?.call();
     }
 
-    final json = _handleResponse(response);
-    final newTokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
+    final AuthTokens newTokens;
+    try {
+      final json = _responseDecoder.decode(response);
+      newTokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
+    } on FormatException {
+      throw const MalformedRefreshResponse();
+    } on TypeError {
+      throw const MalformedRefreshResponse();
+    }
 
     // Guard against logout race: if storage was cleared while request was in flight, do not overwrite
     final checkTokens = await tokenStorage.getTokens();
@@ -167,7 +175,7 @@ class ApiClient {
     final tokens = await tokenStorage.getTokens();
     if (tokens != null) {
       try {
-        final uri = Uri.parse('$_normalizedBaseUrl/api/v1/auth/logout');
+        final uri = _endpoints.resolve('/api/v1/auth/logout');
         await _httpClient.post(
           uri,
           headers: _buildHeaders(token: tokens.accessToken),
@@ -189,7 +197,7 @@ class ApiClient {
   /// Perform authenticated GET request with automatic token refresh on 401.
   Future<Map<String, dynamic>> get(String path) async {
     return _sendWithAuth((token) {
-      final uri = Uri.parse('$_normalizedBaseUrl$path');
+      final uri = _endpoints.resolve(path);
       return _httpClient.get(uri, headers: _buildHeaders(token: token));
     });
   }
@@ -200,7 +208,7 @@ class ApiClient {
     Map<String, dynamic>? body,
   }) async {
     return _sendWithAuth((token) {
-      final uri = Uri.parse('$_normalizedBaseUrl$path');
+      final uri = _endpoints.resolve(path);
       return _httpClient.post(
         uri,
         headers: _buildHeaders(token: token),
@@ -215,7 +223,7 @@ class ApiClient {
     Map<String, dynamic>? body,
   }) async {
     return _sendWithAuth((token) {
-      final uri = Uri.parse('$_normalizedBaseUrl$path');
+      final uri = _endpoints.resolve(path);
       return _httpClient.put(
         uri,
         headers: _buildHeaders(token: token),
@@ -227,7 +235,7 @@ class ApiClient {
   /// Perform authenticated DELETE request with automatic token refresh on 401.
   Future<Map<String, dynamic>> delete(String path) async {
     return _sendWithAuth((token) {
-      final uri = Uri.parse('$_normalizedBaseUrl$path');
+      final uri = _endpoints.resolve(path);
       return _httpClient.delete(uri, headers: _buildHeaders(token: token));
     });
   }
@@ -241,7 +249,7 @@ class ApiClient {
     Map<String, String>? headers,
   }) async {
     return _sendWithAuth((token) {
-      final uri = Uri.parse('$_normalizedBaseUrl$path');
+      final uri = _endpoints.resolve(path);
       final combinedHeaders = _buildHeaders(token: token);
       if (headers != null) {
         combinedHeaders.addAll(headers);
@@ -296,7 +304,7 @@ class ApiClient {
         // Token was already rotated while this request was in-flight!
         // Retry immediately using the newly rotated access token without re-refreshing.
         response = await executeRequest(currentTokens.accessToken);
-        return _handleResponse(response);
+        return _responseDecoder.decode(response);
       }
 
       // 2. Share a single in-flight refresh Future across all concurrent callers:
@@ -313,35 +321,6 @@ class ApiClient {
       }
     }
 
-    return _handleResponse(response);
-  }
-
-  Map<String, dynamic> _handleResponse(http.Response response) {
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) return <String, dynamic>{};
-      try {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      } catch (_) {
-        return <String, dynamic>{};
-      }
-    }
-
-    // Parse RFC 7807 problem details or fallback
-    Map<String, dynamic> errorJson = {};
-    try {
-      errorJson = jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (_) {
-      errorJson = {
-        'title': 'HTTP ${response.statusCode}',
-        'detail': response.body.isNotEmpty ? response.body : 'Request failed.',
-        'status': response.statusCode,
-        'code': 'HTTP_${response.statusCode}',
-      };
-    }
-
-    throw ProblemDetailsException.fromJson(
-      errorJson,
-      fallbackStatus: response.statusCode,
-    );
+    return _responseDecoder.decode(response);
   }
 }
