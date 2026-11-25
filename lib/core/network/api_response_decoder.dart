@@ -10,6 +10,14 @@ class MalformedSuccessResponse extends FormatException {
     : super('Expected a JSON object in API response.');
 }
 
+/// A refresh response failed validation before the original request was retried.
+class MalformedRefreshResponse implements Exception {
+  const MalformedRefreshResponse();
+
+  @override
+  String toString() => 'Invalid refresh response; request was not retried.';
+}
+
 /// Decodes the API envelope independently of transport and session state.
 class ApiResponseDecoder {
   const ApiResponseDecoder();

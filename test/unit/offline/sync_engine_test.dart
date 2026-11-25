@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:usayd_flutter/core/network/api_client.dart';
+import 'package:usayd_flutter/core/network/models/auth_tokens.dart';
 import 'package:usayd_flutter/core/network/token_storage.dart';
 import 'package:usayd_flutter/core/offline/encryption/encryption_service.dart';
 import 'package:usayd_flutter/core/offline/models/offline_action.dart';
@@ -220,6 +221,51 @@ void main() {
       expect(action?.status, SyncStatus.conflict);
       await engine.syncAll();
       expect(dispatches, 1);
+    });
+
+    test('invalid refresh response leaves rejected mutation pending', () async {
+      await tokenStorage.saveTokens(
+        const AuthTokens(
+          accessToken: 'old-access',
+          expiresIn: 3600,
+          refreshToken: 'old-refresh',
+          tokenType: 'Bearer',
+        ),
+      );
+      var mutationCalls = 0;
+      var refreshCalls = 0;
+      final apiClient = ApiClient(
+        baseUrl: 'https://api.usayd.academy',
+        tokenStorage: tokenStorage,
+        httpClient: MockClient((request) async {
+          if (request.url.path == '/api/v1/auth/refresh') {
+            refreshCalls++;
+            return http.Response('invalid JSON', 200);
+          }
+          mutationCalls++;
+          return http.Response('{"status":401}', 401);
+        }),
+      );
+      final engine = OfflineSyncEngine(queue: queue, apiClient: apiClient);
+      addTearDown(engine.dispose);
+      await queue.enqueue(
+        OfflineAction(
+          id: 'malformed-refresh',
+          endpoint: '/api/v1/notes',
+          method: 'POST',
+          payload: {},
+          idempotencyKey: 'malformed-refresh-key',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      final result = await engine.syncAll();
+      expect(result.conflictCount, 0);
+      expect(result.retryCount, 1);
+      final action = await queue.getAction('malformed-refresh');
+      expect(action?.status, SyncStatus.pending);
+      expect(mutationCalls, 1);
+      expect(refreshCalls, 1);
     });
 
     test('422 validation failure marks action as failed', () async {

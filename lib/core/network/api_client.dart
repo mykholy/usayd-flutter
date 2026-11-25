@@ -150,8 +150,15 @@ class ApiClient {
       onUnauthenticated?.call();
     }
 
-    final json = _responseDecoder.decode(response);
-    final newTokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
+    final AuthTokens newTokens;
+    try {
+      final json = _responseDecoder.decode(response);
+      newTokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
+    } on FormatException {
+      throw const MalformedRefreshResponse();
+    } on TypeError {
+      throw const MalformedRefreshResponse();
+    }
 
     // Guard against logout race: if storage was cleared while request was in flight, do not overwrite
     final checkTokens = await tokenStorage.getTokens();
