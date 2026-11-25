@@ -1,0 +1,25 @@
+name: Branch promotion
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+    branches: [dev, staging, main]
+permissions:
+  contents: read
+jobs:
+  branch-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check promotion path
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          HEAD: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_REPO" == "$REPO" ]] || { echo "Use an internal ticket branch"; exit 1; }
+          case "$BASE:$HEAD" in
+            dev:feat/*|dev:fix/*|dev:chore/*|dev:refactor/*|dev:staging|dev:main|staging:dev|staging:main|main:staging|main:hotfix/*) ;;
+            *) echo "Invalid promotion: $HEAD -> $BASE"; exit 1 ;;
+          esac
