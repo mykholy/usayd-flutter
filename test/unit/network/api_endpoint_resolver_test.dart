@@ -25,6 +25,14 @@ void main() {
       expect(uri.queryParameters, {'page': '2'});
     });
 
+    test('preserves queries on the version root', () {
+      const resolver = ApiEndpointResolver('https://api.usayd.academy/api/v1');
+      expect(
+        resolver.resolve('/api/v1?page=2#section').toString(),
+        'https://api.usayd.academy/api/v1?page=2#section',
+      );
+    });
+
     test('supports relative API paths with a versioned base', () {
       const resolver = ApiEndpointResolver('https://api.usayd.academy/api/v1');
       expect(resolver.resolve('/auth/me').path, '/api/v1/auth/me');

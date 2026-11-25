@@ -7,8 +7,9 @@ class ApiEndpointResolver {
 
   Uri resolve(String path) {
     final base = baseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final pathOnly = path.split(RegExp(r'[?#]')).first;
     final hasVersionedPath =
-        path == _apiPrefix || path.startsWith('$_apiPrefix/');
+        pathOnly == _apiPrefix || pathOnly.startsWith('$_apiPrefix/');
     if (base.endsWith(_apiPrefix) && hasVersionedPath) {
       return Uri.parse('$base${path.substring(_apiPrefix.length)}');
     }

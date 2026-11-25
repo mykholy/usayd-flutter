@@ -190,6 +190,38 @@ void main() {
       },
     );
 
+    test('does not replay a successful mutation with invalid JSON', () async {
+      var dispatches = 0;
+      final apiClient = ApiClient(
+        baseUrl: 'https://api.usayd.academy',
+        tokenStorage: tokenStorage,
+        httpClient: MockClient((request) async {
+          dispatches++;
+          return http.Response('invalid JSON', 200);
+        }),
+      );
+      final engine = OfflineSyncEngine(queue: queue, apiClient: apiClient);
+      addTearDown(engine.dispose);
+      await queue.enqueue(
+        OfflineAction(
+          id: 'malformed-success',
+          endpoint: '/api/v1/notes',
+          method: 'POST',
+          payload: {},
+          idempotencyKey: 'malformed-success-key',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      final result = await engine.syncAll();
+      expect(result.conflictCount, 1);
+      expect(result.retryCount, 0);
+      final action = await queue.getAction('malformed-success');
+      expect(action?.status, SyncStatus.conflict);
+      await engine.syncAll();
+      expect(dispatches, 1);
+    });
+
     test('422 validation failure marks action as failed', () async {
       final mockClient = MockClient((request) async {
         return http.Response(
