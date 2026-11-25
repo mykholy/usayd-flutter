@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../network/api_client.dart';
 import '../network/api_response_decoder.dart';
 import '../network/problem_details_exception.dart';
+import '../network/session_coordinator.dart';
 import 'models/offline_action.dart';
 import 'models/sync_status.dart';
 import 'offline_queue.dart';
@@ -155,6 +156,26 @@ class OfflineSyncEngine {
           _eventController.add(
             SyncEvent(type: SyncEventType.actionSynced, action: synced),
           );
+        } on SessionChangedException catch (e) {
+          final uncertain = inFlight.copyWith(
+            status: e.requestMayHaveSucceeded
+                ? SyncStatus.conflict
+                : SyncStatus.pending,
+            errorMessage: e.toString(),
+          );
+          await queue.updateAction(uncertain);
+          if (e.requestMayHaveSucceeded) {
+            conflictCount++;
+            _eventController.add(
+              SyncEvent(type: SyncEventType.actionConflict, action: uncertain),
+            );
+          } else {
+            retryCount++;
+            _eventController.add(
+              SyncEvent(type: SyncEventType.actionRetried, action: uncertain),
+            );
+          }
+          break;
         } on MalformedSuccessResponse catch (e) {
           // The server acknowledged the request, but its body is invalid.
           // Retain for reconciliation; never automatically replay a mutation.

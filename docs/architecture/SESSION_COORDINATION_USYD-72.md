@@ -1,0 +1,5 @@
+# USYD-72 — Session generation and token refresh coordination
+
+ApiClient retains the existing public contract, delegates credential lifecycle to SessionCoordinator and refresh deduplication to TokenRefreshCoordinator. Credential storage operations are serialized. Login, registration and logout invalidate older operations, and 401 retries are bound to the generation that initiated the request. Late successful responses cannot be returned as current-session data. An offline mutation acknowledged by an old session is kept for conflict reconciliation rather than replayed.
+
+One application ApiClient must own the token store; direct external writes and multiple independently constructed clients sharing the same store are unsupported. Login/register clear the preceding local session first (fail closed). Logout evicts local tokens before best-effort remote revocation. This is not a complete account-bound offline dispatch implementation; the UI must bind the sync identity to the verified profile. Real backend integration and device verification remain required.

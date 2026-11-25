@@ -6,6 +6,7 @@ import 'package:usayd_flutter/core/network/api_client.dart';
 import 'package:usayd_flutter/core/network/models/auth_tokens.dart';
 import 'package:usayd_flutter/core/network/problem_details_exception.dart';
 import 'package:usayd_flutter/core/network/token_storage.dart';
+import 'package:usayd_flutter/core/network/session_coordinator.dart';
 
 void main() {
   group('ApiClient', () {
@@ -574,7 +575,10 @@ void main() {
         );
 
         // Start refresh
-        final refreshFuture = apiClient.refresh();
+        final refreshFuture = expectLater(
+          apiClient.refresh(),
+          throwsA(isA<SessionChangedException>()),
+        );
         // Concurrently log out while refresh is awaiting response
         await apiClient.logout();
 
