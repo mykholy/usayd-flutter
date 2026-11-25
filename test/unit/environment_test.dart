@@ -35,6 +35,36 @@ void main() {
     expect(FlavorConfig.instance.enableLogging, isFalse);
   });
 
+  test('dev rejects protected DNS names with a root dot', () {
+    const hosts = [
+      'api.usayd.academy',
+      'staging-api.usayd.academy',
+      'api.usayd.academy.',
+      'staging-api.usayd.academy.',
+    ];
+    for (final host in hosts) {
+      void configure() {
+        configureEnvironment(
+          AppFlavor.dev,
+          platform: TargetPlatform.android,
+          devApiBaseUrl: 'https://$host/api/v1',
+        );
+      }
+
+      expect(configure, throwsArgumentError);
+    }
+  });
+
+  test('dev accepts an unrelated development host', () {
+    const url = 'https://dev.example.com./api/v1';
+    configureEnvironment(
+      AppFlavor.dev,
+      platform: TargetPlatform.android,
+      devApiBaseUrl: url,
+    );
+    expect(FlavorConfig.instance.apiBaseUrl, url);
+  });
+
   test('native flavor controls the default entrypoint', () {
     for (final flavor in AppFlavor.values) {
       final name = flavor.name;
