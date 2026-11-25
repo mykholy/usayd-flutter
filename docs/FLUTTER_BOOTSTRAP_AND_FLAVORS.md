@@ -24,15 +24,15 @@ Key tenets:
 
 | Environment | Flavor | App Identifier (`applicationId`) | App Name | Default API Base URL |
 |---|---|---|---|---|
-| **Development** | `dev` | `academy.usayd.learner.dev` | `أكاديمية أُسَيْد (Dev)` | `http://10.0.2.2:8000/api/v1` (Android) / `http://127.0.0.1:8000/api/v1` (iOS) |
-| **Staging** | `staging` | `academy.usayd.learner.stg` | `أكاديمية أُسَيْد (Staging)` | `https://staging-api.usayd.academy/api/v1` |
+| **Development** | `dev` | `academy.usayd.learner.dev` | `Usayd Dev` | `http://10.0.2.2:8000/api/v1` (Android) / `http://127.0.0.1:8000/api/v1` (iOS) |
+| **Staging** | `staging` | `academy.usayd.learner.stg` | `Usayd Staging` | `https://staging-api.usayd.academy/api/v1` |
 | **Production** | `prod` | `academy.usayd.learner` | `أكاديمية أُسَيْد` | `https://api.usayd.academy/api/v1` |
 
 ### Entrypoints
 - `lib/main_dev.dart` — Initializes `FlavorConfig` with `AppFlavor.dev`.
 - `lib/main_staging.dart` — Initializes `FlavorConfig` with `AppFlavor.staging`.
 - `lib/main_prod.dart` — Initializes `FlavorConfig` with `AppFlavor.prod`.
-- `lib/main.dart` — Default fallback launcher (defaults to `prod` if not initialized).
+- `lib/main.dart` — Selects the native flavor; only unflavored debug development may fall back to dev. Mismatched native/Dart flavors fail before app startup.
 
 ### Android Gradle Flavor Dimensions
 Configured in `android/app/build.gradle.kts`:
@@ -42,12 +42,12 @@ productFlavors {
     create("dev") {
         dimension = "environment"
         applicationIdSuffix = ".dev"
-        resValue("string", "app_name", "أكاديمية أُسَيْد (Dev)")
+        resValue("string", "app_name", "Usayd Dev")
     }
     create("staging") {
         dimension = "environment"
         applicationIdSuffix = ".stg"
-        resValue("string", "app_name", "أكاديمية أُسَيْد (Staging)")
+        resValue("string", "app_name", "Usayd Staging")
     }
     create("prod") {
         dimension = "environment"
@@ -95,3 +95,15 @@ flutter analyze
 # Execute test suite
 flutter test
 ```
+
+## 5. Native builds and environment isolation
+
+- Android: three product flavors, unique app IDs and launcher names, INTERNET permission in all builds; HTTP opt-in only for devDebug.
+- iOS native schemes and CocoaPods mapping are tracked in a separate change.
+- Use Flutter CLI to ensure the native flavor is passed to Dart. For direct Xcode release archives, use the Flutter CLI build flow instead of the legacy Runner scheme.
+- Physical devices: pass a reachable development URL with `--dart-define=DEV_API_BASE_URL=https://your-dev-host/api/v1`. This option does not change staging or production URLs. Local HTTP is intended for development debug only.
+- The staging and production URLs are existing project defaults, not proof of deployed servers. Confirm connectivity separately.
+- Firebase is not currently a dependency. Register three separate Firebase apps/projects before enabling Firebase integrations. Do not commit private service account keys.
+- Android release signing and Apple provisioning must be configured before distribution; production must never use debug signing.
+
+CI builds all three Android debug APKs in separate matrix jobs. These are build checks, not a deployment or device-installation test.
