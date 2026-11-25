@@ -5,6 +5,8 @@ import 'api_response_decoder.dart';
 import 'models/auth_tokens.dart';
 import 'models/user_profile.dart';
 import 'problem_details_exception.dart';
+import 'session_coordinator.dart';
+import 'token_refresh_coordinator.dart';
 import 'token_storage.dart';
 
 typedef LocaleProvider = String Function();
@@ -19,7 +21,9 @@ class ApiClient {
   final LocaleProvider? localeProvider;
   final UnauthenticatedCallback? onUnauthenticated;
 
-  Future<AuthTokens>? _refreshFuture;
+  final SessionCoordinator _session;
+  Future<void>? _logoutBarrier;
+  final TokenRefreshCoordinator _refreshCoordinator = TokenRefreshCoordinator();
 
   ApiClient({
     required this.baseUrl,
@@ -28,7 +32,8 @@ class ApiClient {
     this.localeProvider,
     this.onUnauthenticated,
   }) : _httpClient = httpClient ?? http.Client(),
-       _endpoints = ApiEndpointResolver(baseUrl);
+       _endpoints = ApiEndpointResolver(baseUrl),
+       _session = SessionCoordinator(tokenStorage);
 
   Map<String, String> _buildHeaders({String? token}) {
     final locale = localeProvider != null ? localeProvider!() : 'ar';
@@ -54,25 +59,15 @@ class ApiClient {
     String? phone,
     String? locale,
     String deviceName = 'flutter-mobile',
-  }) async {
-    final uri = _endpoints.resolve('/api/v1/auth/register');
-    final response = await _httpClient.post(
-      uri,
-      headers: _buildHeaders(),
-      body: jsonEncode({
-        'name': name,
-        'email': email,
-        'password': password,
-        'phone': phone,
-        'locale': locale ?? (localeProvider?.call() ?? 'ar'),
-        'device_name': deviceName,
-      }),
-    );
-
-    final json = _responseDecoder.decode(response);
-    final tokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
-    await tokenStorage.saveTokens(tokens);
-    return tokens;
+  }) {
+    return _authenticate('/api/v1/auth/register', {
+      'name': name,
+      'email': email,
+      'password': password,
+      'phone': phone,
+      'locale': locale ?? (localeProvider?.call() ?? 'ar'),
+      'device_name': deviceName,
+    });
   }
 
   /// Authenticate with credentials and store returned tokens.
@@ -80,46 +75,64 @@ class ApiClient {
     required String email,
     required String password,
     String deviceName = 'flutter-mobile',
-  }) async {
-    final uri = _endpoints.resolve('/api/v1/auth/login');
-    final response = await _httpClient.post(
-      uri,
-      headers: _buildHeaders(),
-      body: jsonEncode({
-        'email': email,
-        'password': password,
-        'device_name': deviceName,
-      }),
-    );
-
-    final json = _responseDecoder.decode(response);
-    final tokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
-    await tokenStorage.saveTokens(tokens);
-    return tokens;
+  }) {
+    return _authenticate('/api/v1/auth/login', {
+      'email': email,
+      'password': password,
+      'device_name': deviceName,
+    });
   }
 
-  /// Rotate refresh token and persist new token pair.
-  /// Deduplicates concurrent callers to a single in-flight Future.
-  Future<AuthTokens> refresh({String deviceName = 'flutter-mobile'}) async {
-    final existingFuture = _refreshFuture;
-    if (existingFuture != null) {
-      return existingFuture;
-    }
-
-    final future = _performRefresh(deviceName: deviceName);
-    _refreshFuture = future;
+  Future<AuthTokens> _authenticate(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final generation = _session.beginTransition();
+    _refreshCoordinator.invalidate();
     try {
-      return await future;
+      await _session.takeAndClear(generation);
+      try {
+        await _logoutBarrier;
+      } catch (_) {
+        // This transition has already cleared the local credentials safely.
+      }
+      final response = await _httpClient.post(
+        _endpoints.resolve(path),
+        headers: _buildHeaders(),
+        body: jsonEncode(body),
+      );
+      final json = _responseDecoder.decode(response);
+      final tokens = AuthTokens.fromJson(json['data'] as Map<String, dynamic>);
+      await _session.saveTransition(generation, tokens);
+      return tokens;
     } finally {
-      _refreshFuture = null;
+      _session.finishTransition(generation);
     }
   }
 
-  Future<AuthTokens> _performRefresh({required String deviceName}) async {
-    final currentTokens = await tokenStorage.getTokens();
+  /// Rotate refresh tokens once per active session generation.
+  Future<AuthTokens> refresh({String deviceName = 'flutter-mobile'}) async {
+    return _refreshForGeneration(_session.current, deviceName: deviceName);
+  }
+
+  Future<AuthTokens> _refreshForGeneration(
+    int generation, {
+    String deviceName = 'flutter-mobile',
+  }) {
+    _session.ensureCurrent(generation);
+    return _refreshCoordinator.run(
+      generation,
+      () => _performRefresh(generation, deviceName: deviceName),
+    );
+  }
+
+  Future<AuthTokens> _performRefresh(
+    int generation, {
+    required String deviceName,
+  }) async {
+    final currentTokens = await _session.read(generation);
     if (currentTokens == null || currentTokens.refreshToken.isEmpty) {
-      await tokenStorage.clearTokens();
-      onUnauthenticated?.call();
+      await _expireSession(generation);
       throw const ProblemDetailsException(
         title: 'Unauthorized',
         status: 401,
@@ -128,26 +141,19 @@ class ApiClient {
       );
     }
 
-    final uri = _endpoints.resolve('/api/v1/auth/refresh');
-    final http.Response response;
-    try {
-      response = await _httpClient.post(
-        uri,
-        headers: _buildHeaders(),
-        body: jsonEncode({
-          'refresh_token': currentTokens.refreshToken,
-          'device_name': deviceName,
-        }),
-      );
-    } catch (_) {
-      // Network or socket failure: transient error, do NOT wipe tokens
-      rethrow;
-    }
+    _session.ensureCurrent(generation);
+    final response = await _httpClient.post(
+      _endpoints.resolve('/api/v1/auth/refresh'),
+      headers: _buildHeaders(),
+      body: jsonEncode({
+        'refresh_token': currentTokens.refreshToken,
+        'device_name': deviceName,
+      }),
+    );
+    _session.ensureCurrent(generation);
 
     if (response.statusCode == 401 || response.statusCode == 403) {
-      // Explicit authentication rejection: refresh token is expired, revoked, or invalid
-      await tokenStorage.clearTokens();
-      onUnauthenticated?.call();
+      await _expireSession(generation);
     }
 
     final AuthTokens newTokens;
@@ -160,32 +166,65 @@ class ApiClient {
       throw const MalformedRefreshResponse();
     }
 
-    // Guard against logout race: if storage was cleared while request was in flight, do not overwrite
-    final checkTokens = await tokenStorage.getTokens();
-    if (checkTokens != null) {
-      await tokenStorage.saveTokens(newTokens);
-    }
-
+    await _session.saveRefreshed(generation, currentTokens, newTokens);
     return newTokens;
   }
 
-  /// Log out and revoke active tokens.
-  Future<void> logout({bool allDevices = false}) async {
-    _refreshFuture = null;
-    final tokens = await tokenStorage.getTokens();
-    if (tokens != null) {
-      try {
-        final uri = _endpoints.resolve('/api/v1/auth/logout');
-        await _httpClient.post(
-          uri,
-          headers: _buildHeaders(token: tokens.accessToken),
-          body: jsonEncode({'all_devices': allDevices}),
-        );
-      } catch (_) {
-        // Suppress network errors during logout; local token eviction must proceed.
-      }
+  Future<void> _expireSession(int generation) async {
+    _session.ensureCurrent(generation);
+    final next = _session.beginTransition();
+    _refreshCoordinator.invalidate();
+    try {
+      await _session.takeAndClear(next);
+      _session.finishTransition(next);
+      onUnauthenticated?.call();
+    } finally {
+      _session.finishTransition(next);
     }
-    await tokenStorage.clearTokens();
+  }
+
+  /// Evict local credentials first, then revoke the captured remote session.
+  Future<void> logout({bool allDevices = false}) {
+    final generation = _session.beginTransition();
+    _refreshCoordinator.invalidate();
+    final capture = _session.takeForLogout(generation);
+    final previous = _logoutBarrier;
+    final revocation = _revokeCaptured(
+      generation,
+      capture,
+      previous,
+      allDevices,
+    );
+    _logoutBarrier = revocation;
+    return revocation;
+  }
+
+  Future<void> _revokeCaptured(
+    int generation,
+    Future<AuthTokens?> capture,
+    Future<void>? previous,
+    bool allDevices,
+  ) async {
+    final AuthTokens? tokens;
+    try {
+      tokens = await capture;
+    } finally {
+      _session.finishTransition(generation);
+    }
+    // Earlier remote logout failures must not prevent a later retry.
+    try {
+      await previous;
+    } catch (_) {}
+    if (tokens == null) return;
+    try {
+      await _httpClient.post(
+        _endpoints.resolve('/api/v1/auth/logout'),
+        headers: _buildHeaders(token: tokens.accessToken),
+        body: jsonEncode({'all_devices': allDevices}),
+      );
+    } catch (_) {
+      // Local logout is already complete.
+    }
   }
 
   /// Fetch authenticated user profile.
@@ -240,6 +279,8 @@ class ApiClient {
     });
   }
 
+  int captureSessionGeneration() => _session.current;
+
   /// Perform generic authenticated HTTP request (GET, POST, PUT, PATCH, DELETE)
   /// with optional custom headers and automatic token refresh on 401.
   Future<Map<String, dynamic>> request({
@@ -247,8 +288,9 @@ class ApiClient {
     required String path,
     Map<String, dynamic>? body,
     Map<String, String>? headers,
+    int? expectedSessionGeneration,
   }) async {
-    return _sendWithAuth((token) {
+    Future<http.Response> execute(String? token) {
       final uri = _endpoints.resolve(path);
       final combinedHeaders = _buildHeaders(token: token);
       if (headers != null) {
@@ -285,42 +327,72 @@ class ApiClient {
         default:
           throw ArgumentError('Unsupported HTTP method: $method');
       }
-    });
+    }
+
+    return _sendWithAuth(
+      execute,
+      expectedGeneration: expectedSessionGeneration,
+    );
   }
 
-  /// Internal request execution wrapper providing single-attempt 401 token refresh retry.
+  /// Retry a rejected request only within the session that dispatched it.
   Future<Map<String, dynamic>> _sendWithAuth(
-    Future<http.Response> Function(String? token) executeRequest,
-  ) async {
-    final initialTokens = await tokenStorage.getTokens();
+    Future<http.Response> Function(String? token) executeRequest, {
+    int? expectedGeneration,
+  }) async {
+    final generation = expectedGeneration ?? _session.current;
+    final initialTokens = await _session.read(generation);
     final usedToken = initialTokens?.accessToken;
-    var response = await executeRequest(usedToken);
+    _session.ensureCurrent(generation);
+    var response = await _dispatch(generation, executeRequest, usedToken);
+    _checkResponseSession(generation, response);
 
-    // If 401 encountered and we have a valid initial token:
     if (response.statusCode == 401 && initialTokens != null) {
-      // 1. Detect if another concurrent request already rotated the token in storage:
-      final currentTokens = await tokenStorage.getTokens();
-      if (currentTokens != null && currentTokens.accessToken != usedToken) {
-        // Token was already rotated while this request was in-flight!
-        // Retry immediately using the newly rotated access token without re-refreshing.
-        response = await executeRequest(currentTokens.accessToken);
-        return _responseDecoder.decode(response);
-      }
-
-      // 2. Share a single in-flight refresh Future across all concurrent callers:
-      try {
-        final newTokens = await refresh();
-        // Retry the original request with the freshly minted access token
-        response = await executeRequest(newTokens.accessToken);
-      } on ProblemDetailsException {
-        // Explicit 401/403 failure handled inside _performRefresh()
-        rethrow;
-      } catch (_) {
-        // Transient network error during refresh: do NOT clear valid tokens
-        rethrow;
-      }
+      final currentTokens = await _session.read(generation);
+      if (currentTokens == null) throw const SessionChangedException();
+      final retryToken = currentTokens.accessToken != usedToken
+          ? currentTokens.accessToken
+          : (await _refreshForGeneration(generation)).accessToken;
+      _session.ensureCurrent(generation);
+      response = await _dispatch(generation, executeRequest, retryToken);
+      _checkResponseSession(generation, response);
     }
 
     return _responseDecoder.decode(response);
+  }
+
+  Future<http.Response> _dispatch(
+    int generation,
+    Future<http.Response> Function(String? token) executeRequest,
+    String? token,
+  ) async {
+    _session.ensureCurrent(generation);
+    final pending = executeRequest(token);
+    try {
+      return await pending;
+    } catch (_) {
+      _session.ensureCurrent(generation, requestMayHaveSucceeded: true);
+      rethrow;
+    }
+  }
+
+  void _checkResponseSession(int generation, http.Response response) {
+    try {
+      _session.ensureCurrent(
+        generation,
+        requestMayHaveSucceeded:
+            response.statusCode >= 200 && response.statusCode < 300,
+      );
+    } on SessionChangedException {
+      if (response.statusCode == 409) {
+        try {
+          _responseDecoder.decode(response);
+        } on ProblemDetailsException catch (error) {
+          throw SessionChangedException(conflictDetails: error.extensions);
+        }
+        throw const SessionChangedException(conflictDetails: {});
+      }
+      rethrow;
+    }
   }
 }

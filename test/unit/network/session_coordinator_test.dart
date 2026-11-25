@@ -1,0 +1,239 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:usayd_flutter/core/network/api_client.dart';
+import 'package:usayd_flutter/core/network/models/auth_tokens.dart';
+import 'package:usayd_flutter/core/network/session_coordinator.dart';
+import 'package:usayd_flutter/core/network/token_storage.dart';
+
+const _old = AuthTokens(
+  accessToken: 'old-access',
+  refreshToken: 'old-refresh',
+  expiresIn: 3600,
+);
+const _new = AuthTokens(
+  accessToken: 'new-access',
+  refreshToken: 'new-refresh',
+  expiresIn: 3600,
+);
+
+http.Response _tokens(AuthTokens tokens) {
+  return http.Response(jsonEncode({'data': tokens.toJson()}), 200);
+}
+
+void main() {
+  test('late refresh cannot overwrite a newer login', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/refresh')) {
+          started.complete();
+          return reply.future;
+        }
+        return _tokens(_new);
+      }),
+    );
+    final refresh = expectLater(
+      api.refresh(),
+      throwsA(isA<SessionChangedException>()),
+    );
+    await started.future;
+    await api.login(email: 'new@example.invalid', password: 'fixture');
+    reply.complete(_tokens(_old));
+    await refresh;
+    expect(await storage.getTokens(), _new);
+  });
+
+  test('late 401 does not replay under the new user', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    var calls = 0;
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/login')) return _tokens(_new);
+        calls++;
+        if (calls == 1) {
+          started.complete();
+          return reply.future;
+        }
+        return http.Response('{}', 200);
+      }),
+    );
+    final pending = expectLater(
+      api.post('/api/v1/notes'),
+      throwsA(isA<SessionChangedException>()),
+    );
+    await started.future;
+    await api.login(email: 'new@example.invalid', password: 'fixture');
+    reply.complete(http.Response('{"status":401}', 401));
+    await pending;
+    expect(calls, 1);
+    expect(await storage.getTokens(), _new);
+  });
+
+  test('late successful request is flagged as possibly committed', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/logout')) {
+          return http.Response('{}', 200);
+        }
+        started.complete();
+        return reply.future;
+      }),
+    );
+    final pending = expectLater(
+      api.post('/api/v1/notes'),
+      throwsA(
+        isA<SessionChangedException>().having(
+          (error) => error.requestMayHaveSucceeded,
+          'requestMayHaveSucceeded',
+          isTrue,
+        ),
+      ),
+    );
+    await started.future;
+    await api.logout();
+    reply.complete(http.Response('{}', 200));
+    await pending;
+    expect(await storage.getTokens(), isNull);
+  });
+  test('stale transport failure requires reconciliation', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/login')) return _tokens(_new);
+        started.complete();
+        return reply.future;
+      }),
+    );
+    final pending = expectLater(
+      api.post('/api/v1/notes'),
+      throwsA(
+        isA<SessionChangedException>().having(
+          (error) => error.requiresReconciliation,
+          'requiresReconciliation',
+          isTrue,
+        ),
+      ),
+    );
+    await started.future;
+    await api.login(email: 'new@example.invalid', password: 'fixture');
+    reply.completeError(http.ClientException('Fixture transport failure'));
+    await pending;
+  });
+
+  test('stale conflict preserves reconciliation disposition', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final started = Completer<void>();
+    final reply = Completer<http.Response>();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/login')) return _tokens(_new);
+        started.complete();
+        return reply.future;
+      }),
+    );
+    final pending = expectLater(
+      api.post('/api/v1/notes'),
+      throwsA(
+        isA<SessionChangedException>().having(
+          (error) => error.requiresReconciliation,
+          'requiresReconciliation',
+          isTrue,
+        ),
+      ),
+    );
+    await started.future;
+    await api.login(email: 'new@example.invalid', password: 'fixture');
+    reply.complete(http.Response('{"status":409}', 409));
+    await pending;
+  });
+
+  test('overlapping logout revokes old credentials before login', () async {
+    final storage = InMemoryAuthTokenStorage();
+    await storage.saveTokens(_old);
+    final paths = <String>[];
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async {
+        paths.add(request.url.path);
+        if (request.url.path.endsWith('/logout')) {
+          expect(request.headers['authorization'], 'Bearer old-access');
+          return http.Response('{}', 200);
+        }
+        return _tokens(_new);
+      }),
+    );
+    final logout = api.logout(allDevices: true);
+    final login = api.login(email: 'new@example.invalid', password: 'fixture');
+    await logout;
+    await login;
+    expect(paths, ['/api/v1/auth/logout', '/api/v1/auth/login']);
+    expect(await storage.getTokens(), _new);
+  });
+
+  test('failed credential deletion leaves session blocked', () async {
+    final storage = _FailingClearStorage();
+    await storage.saveTokens(_old);
+    final session = SessionCoordinator(storage);
+    final generation = session.beginTransition();
+    await expectLater(session.takeAndClear(generation), throwsStateError);
+    session.finishTransition(generation);
+    expect(() => session.current, throwsA(isA<SessionChangedException>()));
+    storage.fail = false;
+    final retry = session.beginTransition();
+    await session.takeAndClear(retry);
+    session.finishTransition(retry);
+    expect(await session.read(session.current), isNull);
+  });
+
+  test('refresh during transition returns a rejected future', () async {
+    final storage = InMemoryAuthTokenStorage();
+    final api = ApiClient(
+      baseUrl: 'https://api.usayd.academy',
+      tokenStorage: storage,
+      httpClient: MockClient((request) async => _tokens(_new)),
+    );
+    final login = api.login(email: 'new@example.invalid', password: 'fixture');
+    final refresh = api.refresh();
+    await expectLater(refresh, throwsA(isA<SessionChangedException>()));
+    await login;
+  });
+}
+
+class _FailingClearStorage extends InMemoryAuthTokenStorage {
+  bool fail = true;
+
+  @override
+  Future<void> clearTokens() async {
+    if (fail) throw StateError('Fixture storage failure');
+    await super.clearTokens();
+  }
+}

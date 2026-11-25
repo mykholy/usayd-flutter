@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -6,6 +7,7 @@ import 'package:usayd_flutter/core/network/api_client.dart';
 import 'package:usayd_flutter/core/network/models/auth_tokens.dart';
 import 'package:usayd_flutter/core/network/problem_details_exception.dart';
 import 'package:usayd_flutter/core/network/token_storage.dart';
+import 'package:usayd_flutter/core/network/session_coordinator.dart';
 
 void main() {
   group('ApiClient', () {
@@ -544,10 +546,12 @@ void main() {
           ),
         );
 
+        final started = Completer<void>();
+        final release = Completer<void>();
         final mockClient = MockClient((request) async {
           if (request.url.path == '/api/v1/auth/refresh') {
-            // Delay refresh response
-            await Future<void>.delayed(const Duration(milliseconds: 50));
+            started.complete();
+            await release.future;
             return http.Response(
               jsonEncode({
                 'data': {
@@ -574,9 +578,14 @@ void main() {
         );
 
         // Start refresh
-        final refreshFuture = apiClient.refresh();
+        final refreshFuture = expectLater(
+          apiClient.refresh(),
+          throwsA(isA<SessionChangedException>()),
+        );
         // Concurrently log out while refresh is awaiting response
+        await started.future;
         await apiClient.logout();
+        release.complete();
 
         await refreshFuture;
 

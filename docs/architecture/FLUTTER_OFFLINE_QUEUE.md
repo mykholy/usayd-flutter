@@ -55,6 +55,7 @@ stateDiagram-v2
     syncing --> conflict: Backend returns 409 Conflict (conflict_details recorded)
     syncing --> failed: Backend returns 422 Unprocessable (permanent validation error)
     syncing --> pending: Network partition / 5xx error (retry_count incremented)
+    syncing --> conflict: Interrupted sync / uncertain commit requires reconciliation
     synced --> [*]: clearSynced()
 ```
 

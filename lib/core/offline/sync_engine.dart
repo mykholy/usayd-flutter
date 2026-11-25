@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../network/api_client.dart';
 import '../network/api_response_decoder.dart';
 import '../network/problem_details_exception.dart';
+import '../network/session_coordinator.dart';
 import 'models/offline_action.dart';
 import 'models/sync_status.dart';
 import 'offline_queue.dart';
@@ -104,6 +105,7 @@ class OfflineSyncEngine {
     int retryCount = 0;
 
     try {
+      final generation = apiClient.captureSessionGeneration();
       // Recover any unclosed syncing actions first
       await queue.recoverStuckSyncing(userId: currentUserId);
 
@@ -129,6 +131,7 @@ class OfflineSyncEngine {
         final inFlight = action.copyWith(status: SyncStatus.syncing);
         await queue.updateAction(inFlight);
 
+        var serverAcknowledged = false;
         try {
           final headers = <String, String>{
             'Idempotency-Key': action.idempotencyKey,
@@ -142,7 +145,9 @@ class OfflineSyncEngine {
             path: action.endpoint,
             body: action.payload,
             headers: headers,
+            expectedSessionGeneration: generation,
           );
+          serverAcknowledged = true;
 
           // Success: 2xx confirmed by backend
           final synced = inFlight.copyWith(
@@ -155,6 +160,27 @@ class OfflineSyncEngine {
           _eventController.add(
             SyncEvent(type: SyncEventType.actionSynced, action: synced),
           );
+        } on SessionChangedException catch (e) {
+          final uncertain = inFlight.copyWith(
+            status: e.requiresReconciliation
+                ? SyncStatus.conflict
+                : SyncStatus.pending,
+            errorMessage: e.toString(),
+            conflictDetails: e.conflictDetails,
+          );
+          await queue.updateAction(uncertain);
+          if (e.requiresReconciliation) {
+            conflictCount++;
+            _eventController.add(
+              SyncEvent(type: SyncEventType.actionConflict, action: uncertain),
+            );
+          } else {
+            retryCount++;
+            _eventController.add(
+              SyncEvent(type: SyncEventType.actionRetried, action: uncertain),
+            );
+          }
+          break;
         } on MalformedSuccessResponse catch (e) {
           // The server acknowledged the request, but its body is invalid.
           // Retain for reconciliation; never automatically replay a mutation.
@@ -257,6 +283,7 @@ class OfflineSyncEngine {
             ),
           );
         } catch (e) {
+          if (serverAcknowledged) rethrow;
           final retriedAction = inFlight.copyWith(
             status: SyncStatus.pending,
             retryCount: inFlight.retryCount + 1,

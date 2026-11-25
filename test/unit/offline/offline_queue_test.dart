@@ -214,7 +214,7 @@ void main() {
       );
     });
 
-    test('recovers actions stuck in syncing state back to pending', () async {
+    test('quarantines interrupted syncing actions', () async {
       final stuckAction = OfflineAction(
         id: 'stuck-001',
         userId: 'usr_111',
@@ -232,7 +232,8 @@ void main() {
       expect(recovered, equals(1));
 
       final action = await queue.getAction('stuck-001', userId: 'usr_111');
-      expect(action!.status, equals(SyncStatus.pending));
+      expect(action!.status, equals(SyncStatus.conflict));
+      expect(await queue.getPendingActions(userId: 'usr_111'), isEmpty);
     });
   });
 }
