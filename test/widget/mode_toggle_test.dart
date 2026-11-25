@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usayd_flutter/app.dart';
 import 'package:usayd_flutter/core/config/flavor_config.dart';
 import 'package:usayd_flutter/core/config/interface_mode.dart';
+
+import '../helpers/authenticated_app_fixture.dart';
 
 void main() {
   setUp(() {
@@ -17,7 +18,7 @@ void main() {
   testWidgets('Interface mode toggle switches between Kids, Pro, and Simple', (
     tester,
   ) async {
-    await tester.pumpWidget(const UsaydApp(initialMode: InterfaceMode.pro));
+    await tester.pumpWidget(authenticatedAppFixture(initialMode: InterfaceMode.pro));
     await tester.pumpAndSettle();
 
     // Initially in Pro mode

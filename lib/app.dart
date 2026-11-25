@@ -5,7 +5,6 @@ import 'core/config/flavor_config.dart';
 import 'core/config/interface_mode.dart';
 import 'core/config/user_preferences.dart';
 import 'core/localization/usayd_localizations.dart';
-import 'core/network/models/user_profile.dart';
 import 'core/routing/app_route.dart';
 import 'core/routing/app_router.dart';
 import 'core/routing/auth_state_notifier.dart';
@@ -41,31 +40,23 @@ class _UsaydAppState extends State<UsaydApp> {
         UserPreferences(interfaceMode: widget.initialMode ?? InterfaceMode.pro);
 
     _authNotifier =
-        widget.authNotifier ??
-        AuthStateNotifier(
-          isAuthenticated: true,
-          user: const UserProfile(
-            id: 1,
-            name: 'أكاديمية أُسَيْد',
-            email: 'learner@usayd.academy',
-            locale: 'ar',
-            country: 'EG',
-            timezone: 'Africa/Cairo',
-            status: 'active',
-            role: 'learner',
-            isMinor: false,
-          ),
-          preferences: prefs,
-        );
+        widget.authNotifier ?? AuthStateNotifier(preferences: prefs);
 
     _router =
         widget.router ??
         AppRouter.createRouter(
           _authNotifier,
-          initialLocation: AppRoute.defaultRouteForMode(
-            _authNotifier.currentMode.name,
-          ),
+          initialLocation: _authNotifier.isAuthenticated
+              ? AppRoute.defaultRouteForMode(_authNotifier.currentMode.name)
+              : AppRoute.login,
         );
+  }
+
+  @override
+  void dispose() {
+    if (widget.router == null) _router.dispose();
+    if (widget.authNotifier == null) _authNotifier.dispose();
+    super.dispose();
   }
 
   @override
