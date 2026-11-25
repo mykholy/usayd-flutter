@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import '../network/api_client.dart';
+import '../network/api_response_decoder.dart';
 import '../network/problem_details_exception.dart';
 import 'models/offline_action.dart';
 import 'models/sync_status.dart';
@@ -144,6 +145,23 @@ class OfflineSyncEngine {
           _eventController.add(
             SyncEvent(type: SyncEventType.actionSynced, action: synced),
           );
+        } on MalformedSuccessResponse catch (e) {
+          // The server acknowledged the request, but its body is invalid.
+          // Retain for reconciliation; never automatically replay a mutation.
+          final uncertain = inFlight.copyWith(
+            status: SyncStatus.conflict,
+            errorMessage: e.message,
+          );
+          await queue.updateAction(uncertain);
+          conflictCount++;
+          _eventController.add(
+            SyncEvent(
+              type: SyncEventType.actionConflict,
+              action: uncertain,
+              message: e.message,
+            ),
+          );
+          break;
         } on ProblemDetailsException catch (e) {
           if (e.status == 409) {
             // Conflict: state divergence between client draft and server truth
