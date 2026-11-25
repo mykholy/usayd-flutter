@@ -12,6 +12,8 @@ import 'package:usayd_flutter/core/offline/offline_queue.dart';
 import 'package:usayd_flutter/core/offline/storage/offline_storage.dart';
 import 'package:usayd_flutter/core/offline/sync_engine.dart';
 
+const _user = 'default_user';
+
 void main() {
   group('OfflineSyncEngine', () {
     late InMemoryOfflineStorage storage;
@@ -76,7 +78,7 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll(currentUserId: 'default_user');
+        final result = await engine.syncAll(currentUserId: _user);
 
         expect(result.syncedCount, equals(2));
         expect(result.conflictCount, equals(0));
@@ -87,7 +89,7 @@ void main() {
           '/api/v1/lessons/step2',
         ]);
 
-        final a1 = await queue.getAction('act-1', userId: 'default_user');
+        final a1 = await queue.getAction('act-1', userId: _user);
         expect(a1!.status, equals(SyncStatus.synced));
         expect(a1.syncedAt, isNotNull);
 
@@ -132,13 +134,13 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll(currentUserId: 'default_user');
+        final result = await engine.syncAll(currentUserId: _user);
 
         expect(result.conflictCount, equals(1));
         expect(result.syncedCount, equals(0));
         expect(result.hasConflicts, isTrue);
 
-        final action = await queue.getAction('act-conflict', userId: 'default_user');
+        final action = await queue.getAction('act-conflict', userId: _user);
         expect(action!.status, equals(SyncStatus.conflict));
         expect(
           action.errorMessage,
@@ -176,12 +178,12 @@ void main() {
           ),
         );
 
-        final result = await engine.syncAll(currentUserId: 'default_user');
+        final result = await engine.syncAll(currentUserId: _user);
 
         expect(result.retryCount, equals(1));
         expect(result.syncedCount, equals(0));
 
-        final action = await queue.getAction('act-net', userId: 'default_user');
+        final action = await queue.getAction('act-net', userId: _user);
         expect(action!.status, equals(SyncStatus.pending));
         expect(action.retryCount, equals(1));
         expect(action.errorMessage, contains('Network connection unreachable'));
@@ -224,10 +226,10 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll(currentUserId: 'default_user');
+      final result = await engine.syncAll(currentUserId: _user);
 
       expect(result.failedCount, equals(1));
-      final action = await queue.getAction('act-val', userId: 'default_user');
+      final action = await queue.getAction('act-val', userId: _user);
       expect(action!.status, equals(SyncStatus.failed));
 
       engine.dispose();
@@ -267,12 +269,12 @@ void main() {
         ),
       );
 
-      final result = await engine.syncAll(currentUserId: 'default_user');
+      final result = await engine.syncAll(currentUserId: _user);
 
       expect(result.retryCount, equals(1));
       expect(result.failedCount, equals(0));
 
-      final action = await queue.getAction('act-rate', userId: 'default_user');
+      final action = await queue.getAction('act-rate', userId: _user);
       expect(action!.status, equals(SyncStatus.pending));
       expect(action.retryCount, equals(1));
       expect(action.errorMessage, contains('Rate limited'));

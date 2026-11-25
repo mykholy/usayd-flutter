@@ -35,7 +35,9 @@ class OfflineActionQueue {
   }
 
   /// Retrieve all pending actions ordered by creation time ascending (FIFO).
-  Future<List<OfflineAction>> getPendingActions({required String userId}) async {
+  Future<List<OfflineAction>> getPendingActions({
+    required String userId,
+  }) async {
     final all = await getAllActions(userId: userId);
     final pending = all
         .where(
