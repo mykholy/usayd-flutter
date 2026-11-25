@@ -99,11 +99,11 @@ flutter test
 ## 5. Native builds and environment isolation
 
 - Android: three product flavors, unique app IDs and launcher names, INTERNET permission in all builds; HTTP opt-in only for devDebug.
-- iOS native schemes and CocoaPods mapping are tracked in a separate change.
-- Use Flutter CLI to ensure the native flavor is passed to Dart. For direct Xcode release archives, use the Flutter CLI build flow instead of the legacy Runner scheme.
+- iOS: shared dev/staging/prod schemes with Debug/Profile/Release configurations, unique bundle IDs matching Android, and flavor-aware CocoaPods configuration. Local networking exception is limited to Debug-dev.
+- Use Flutter CLI to ensure the native flavor is passed to Dart. The legacy Runner scheme is removed; use the Flutter CLI with explicit flavor for release archives.
 - Physical devices: pass a reachable development URL with `--dart-define=DEV_API_BASE_URL=https://your-dev-host/api/v1`. This option does not change staging or production URLs. Local HTTP is intended for development debug only.
 - The staging and production URLs are existing project defaults, not proof of deployed servers. Confirm connectivity separately.
 - Firebase is not currently a dependency. Register three separate Firebase apps/projects before enabling Firebase integrations. Do not commit private service account keys.
 - Android release signing and Apple provisioning must be configured before distribution; production must never use debug signing.
 
-CI builds all three Android debug APKs in separate matrix jobs. These are build checks, not a deployment or device-installation test.
+CI builds all three Android debug APKs and unsigned iOS simulator apps in separate matrix jobs. These are build checks, not a deployment or device-installation test.

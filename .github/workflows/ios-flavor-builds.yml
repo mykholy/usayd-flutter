@@ -1,0 +1,44 @@
+name: Flutter iOS flavor builds
+on:
+  pull_request:
+  push:
+    branches: [dev, staging, main]
+  merge_group:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: dev
+            bundle_id: academy.usayd.learner.dev
+          - flavor: staging
+            bundle_id: academy.usayd.learner.stg
+          - flavor: prod
+            bundle_id: academy.usayd.learner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: .fvmrc
+      - run: flutter pub get
+      - run: flutter build ios --simulator --debug --no-codesign --flavor ${{ matrix.flavor }} -t lib/main_${{ matrix.flavor }}.dart
+      - name: Verify built bundle identifier
+        env:
+          EXPECTED_ID: ${{ matrix.bundle_id }}
+        run: |
+          set -euo pipefail
+          actual=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' build/ios/iphonesimulator/Runner.app/Info.plist)
+          test "$actual" = "$EXPECTED_ID"
+      - name: Archive simulator build
+        run: ditto -c -k --keepParent build/ios/iphonesimulator/Runner.app simulator-app.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-${{ matrix.flavor }}
+          path: simulator-app.zip
+          if-no-files-found: error
+          retention-days: 7
