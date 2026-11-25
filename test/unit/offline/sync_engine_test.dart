@@ -219,10 +219,7 @@ void main() {
       final result = await engine.syncAll(currentUserId: _user);
       expect(result.conflictCount, 1);
       expect(result.retryCount, 0);
-      final action = await queue.getAction(
-        'malformed-success',
-        userId: _user,
-      );
+      final action = await queue.getAction('malformed-success', userId: _user);
       expect(action?.status, SyncStatus.conflict);
       await engine.syncAll(currentUserId: _user);
       expect(dispatches, 1);
@@ -267,10 +264,7 @@ void main() {
       final result = await engine.syncAll(currentUserId: _user);
       expect(result.conflictCount, 0);
       expect(result.retryCount, 1);
-      final action = await queue.getAction(
-        'malformed-refresh',
-        userId: _user,
-      );
+      final action = await queue.getAction('malformed-refresh', userId: _user);
       expect(action?.status, SyncStatus.pending);
       expect(mutationCalls, 1);
       expect(refreshCalls, 1);

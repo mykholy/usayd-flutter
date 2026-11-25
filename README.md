@@ -57,3 +57,7 @@ flutter test
 - [RTL/LTR Localization & Theme Architecture](docs/FLUTTER_LOCALIZATION_AND_THEMES.md)
 - [Responsive Mobile Shell & Navigation](docs/FLUTTER_RESPONSIVE_SHELL.md)
 - [Architecture & Governance](AGENTS.md)
+
+## Developer handoff
+- [Start here: engineering foundation and feature template](docs/architecture/DEVELOPER_HANDOFF.md)
+- [Automated architecture boundary test](test/architecture/dependency_boundaries_test.dart)
